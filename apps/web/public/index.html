@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Particular — parts for every player</title>
+    <link rel="stylesheet" href="/app.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="masthead">
+      <a class="wordmark" href="/" aria-label="Particular home"
+        ><span>p</span>articular</a
+      >
+      <p>One ensemble. Parts that fit.</p>
+    </header>
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">A deterministic arranging sketch</p>
+          <h1 id="page-title">Make room for<br /><em>every musician.</em></h1>
+          <p class="lede">
+            Turn one authorized MusicXML score into coordinated Foundation,
+            Core, and Challenge parts—then review every particular change.
+          </p>
+        </div>
+        <form id="score-form" class="score-card">
+          <div class="step">
+            <span>01</span>
+            <div>
+              <label for="score-file">Choose a MusicXML score</label>
+              <p>.musicxml, .xml, or .mxl · 2 MB maximum</p>
+              <input
+                id="score-file"
+                type="file"
+                accept=".musicxml,.xml,.mxl"
+                required
+              />
+            </div>
+          </div>
+          <div class="step">
+            <span>02</span
+            ><label class="check"
+              ><input id="rights-attestation" type="checkbox" required /><span
+                >I confirm that I’m authorized to upload and create adaptations
+                of this score.</span
+              ></label
+            >
+          </div>
+          <button type="submit">
+            Create particular parts <span aria-hidden="true">→</span>
+          </button>
+          <p class="privacy">
+            Processed locally in private temporary storage. No remote AI
+            requests.
+          </p>
+        </form>
+      </section>
+
+      <p id="status" class="status" aria-live="polite"></p>
+
+      <section
+        id="results"
+        class="results"
+        hidden
+        aria-labelledby="results-title"
+      >
+        <div class="review-banner">
+          <span aria-hidden="true">!</span>
+          <div>
+            <strong>Director review required</strong>
+            <p>
+              Generated parts are suggestions, not performance-ready editions.
+              Inspect every change before sharing them.
+            </p>
+          </div>
+        </div>
+        <div class="section-heading">
+          <p class="eyebrow">The arrangement family</p>
+          <h2 id="results-title">Three levels, one rehearsal.</h2>
+        </div>
+        <div
+          id="tier-tabs"
+          class="tier-tabs"
+          role="tablist"
+          aria-label="Arrangement tier"
+        ></div>
+        <div class="result-grid">
+          <section class="panel" aria-labelledby="difficulty-title">
+            <h3 id="difficulty-title">Part difficulty</h3>
+            <div id="difficulty"></div>
+          </section>
+          <section class="panel changes-panel" aria-labelledby="changes-title">
+            <h3 id="changes-title">Change ledger</h3>
+            <div id="changes"></div>
+          </section>
+        </div>
+        <section class="downloads" aria-labelledby="downloads-title">
+          <div>
+            <p class="eyebrow">Take it to the stand</p>
+            <h2 id="downloads-title">Download &amp; review</h2>
+          </div>
+          <div id="downloads" class="download-grid"></div>
+        </section>
+      </section>
+    </main>
+    <footer>
+      <span>Particular</span>
+      <p>Music belongs to everyone in the room.</p>
+    </footer>
+  </body>
+</html>

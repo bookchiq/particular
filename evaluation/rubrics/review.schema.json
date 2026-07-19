@@ -4,24 +4,30 @@
   "title": "Particular arrangement review",
   "type": "object",
   "additionalProperties": false,
-  "required": ["fixture_id", "engine_version", "evaluator", "score_review", "passage_reviews"],
+  "required": [
+    "fixture_id",
+    "engine_version",
+    "evaluator",
+    "score_review",
+    "passage_reviews"
+  ],
   "properties": {
-    "fixture_id": {"type": "string", "minLength": 1},
-    "generation_id": {"type": "string", "minLength": 1},
-    "engine_version": {"type": "string", "minLength": 1},
-    "tier": {"enum": ["Foundation", "Core", "Challenge"]},
-    "evaluated_at": {"type": "string", "format": "date-time"},
+    "fixture_id": { "type": "string", "minLength": 1 },
+    "generation_id": { "type": "string", "minLength": 1 },
+    "engine_version": { "type": "string", "minLength": 1 },
+    "tier": { "enum": ["Foundation", "Core", "Challenge"] },
+    "evaluated_at": { "type": "string", "format": "date-time" },
     "evaluator": {
       "type": "object",
       "additionalProperties": false,
       "required": ["role", "consent_confirmed"],
       "properties": {
-        "role": {"enum": ["director", "teacher", "arranger", "specialist"]},
-        "consent_confirmed": {"const": true},
-        "instrument_family": {"type": "string", "minLength": 1}
+        "role": { "enum": ["director", "teacher", "arranger", "specialist"] },
+        "consent_confirmed": { "const": true },
+        "instrument_family": { "type": "string", "minLength": 1 }
       }
     },
-    "score_review": {"$ref": "#/$defs/ratings"},
+    "score_review": { "$ref": "#/$defs/ratings" },
     "passage_reviews": {
       "type": "array",
       "items": {
@@ -29,29 +35,39 @@
         "additionalProperties": false,
         "required": ["part_id", "measure_start", "measure_end", "ratings"],
         "properties": {
-          "part_id": {"type": "string", "minLength": 1},
-          "measure_start": {"type": "integer", "minimum": 1},
-          "measure_end": {"type": "integer", "minimum": 1},
-          "ratings": {"$ref": "#/$defs/ratings"},
-          "notes": {"type": "string", "maxLength": 2000}
+          "part_id": { "type": "string", "minLength": 1 },
+          "measure_start": { "type": "integer", "minimum": 1 },
+          "measure_end": { "type": "integer", "minimum": 1 },
+          "ratings": { "$ref": "#/$defs/ratings" },
+          "notes": { "type": "string", "maxLength": 2000 }
         }
       }
     },
-    "required_edit_minutes": {"type": "integer", "minimum": 0},
-    "rehearsal_ready": {"type": "boolean"},
-    "notes": {"type": "string", "maxLength": 5000}
+    "required_edit_minutes": { "type": "integer", "minimum": 0 },
+    "rehearsal_ready": { "type": "boolean" },
+    "notes": { "type": "string", "maxLength": 5000 }
   },
   "$defs": {
     "ratings": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["playability", "fidelity", "meaningfulness", "notation_quality", "rehearsal_usefulness"],
+      "required": [
+        "playability",
+        "fidelity",
+        "meaningfulness",
+        "notation_quality",
+        "rehearsal_usefulness"
+      ],
       "properties": {
-        "playability": {"type": "integer", "minimum": 1, "maximum": 5},
-        "fidelity": {"type": "integer", "minimum": 1, "maximum": 5},
-        "meaningfulness": {"type": "integer", "minimum": 1, "maximum": 5},
-        "notation_quality": {"type": "integer", "minimum": 1, "maximum": 5},
-        "rehearsal_usefulness": {"type": "integer", "minimum": 1, "maximum": 5}
+        "playability": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "fidelity": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "meaningfulness": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "notation_quality": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "rehearsal_usefulness": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        }
       }
     }
   }

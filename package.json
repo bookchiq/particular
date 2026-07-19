@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
-    "check:evaluation": "node -e \"console.log('Evaluation gate is introduced in U2; no corpus exists yet.')\""
+    "check:evaluation": "uv run python -m evaluation.scripts.validate_corpus"
   },
   "devDependencies": {
     "@eslint/js": "^9.31.0",

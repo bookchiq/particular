@@ -42,7 +42,7 @@ uv run mypy services evaluation
 uv run pytest
 ```
 
-`pnpm check` runs formatting, linting, TypeScript checking, and workspace tests. The Python commands are intentionally separate so failures remain legible. The CI `evaluation` job is the separate corpus and musical-quality gate; it is currently a documented placeholder until U2 adds its schema and verifier.
+`pnpm check` runs formatting, linting, TypeScript checking, and workspace tests. The Python commands are intentionally separate so failures remain legible. Run `pnpm check:evaluation` for the separate licensed-corpus integrity gate.
 
 ## Deterministic demo CLI
 
@@ -55,6 +55,18 @@ uv run python -m particular.cli generate evaluation/fixtures/string-orchestra-se
 ```
 
 `generate` accepts `.musicxml`, `.xml`, and safely bounded `.mxl` inputs. The output directory must not already exist. Particular publishes the normalized original, all three deterministic tiers, an analysis report, and an auditable manifest together; invalid input does not leave a partial output directory. This baseline makes no remote AI requests.
+
+## Local browser demo
+
+Start the hackathon interface:
+
+```sh
+uv run python -m particular.demo
+```
+
+Open `http://127.0.0.1:8765`, attest that you are authorized to adapt the score, and upload MusicXML. The interface shows instrument-aware difficulty features and the accepted or rejected change ledger for each tier, then offers the normalized source, generated variants, analysis, and manifest for download.
+
+The demo binds to loopback only, stores each job in private temporary storage for the server's lifetime, and makes no remote AI requests. Generated parts require director review before rehearsal or distribution.
 
 ## Contributing
 
