@@ -75,10 +75,6 @@ def generation_manifest(
     }
 
 
-def _write(path: Path, contents: bytes) -> None:
-    path.write_bytes(contents)
-
-
 def generate_to_directory(source_path: Path, output_path: Path) -> dict[str, Any]:
     """Generate and atomically publish a complete arrangement directory."""
 
@@ -92,21 +88,21 @@ def generate_to_directory(source_path: Path, output_path: Path) -> dict[str, Any
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output_path.name}-", dir=output_path.parent))
     try:
-        _write(temporary / "original-normalized.musicxml", export_musicxml(score))
+        (temporary / "original-normalized.musicxml").write_bytes(export_musicxml(score))
         filenames = {
             "Foundation": "foundation.musicxml",
             "Core": "core.musicxml",
             "Challenge": "challenge.musicxml",
         }
         for tier in family.tiers:
-            _write(temporary / filenames[tier.name], export_musicxml(tier.score))
-        _write(
-            temporary / "manifest.json",
-            (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode(),
+            (temporary / filenames[tier.name]).write_bytes(export_musicxml(tier.score))
+        (temporary / "manifest.json").write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
         )
-        _write(
-            temporary / "analysis.json",
-            (json.dumps(analysis, indent=2, sort_keys=True) + "\n").encode(),
+        (temporary / "analysis.json").write_text(
+            json.dumps(analysis, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
         )
         os.rename(temporary, output_path)
     except BaseException:

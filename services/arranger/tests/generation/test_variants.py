@@ -75,6 +75,7 @@ def test_family_is_deterministic_synchronized_and_round_trippable() -> None:
     second = generate_arrangement_family(strings)
 
     assert first.manifest == second.manifest
+    assert all(change.part_id and change.measure for change in first.manifest.changes)
     assert [tier.name for tier in first.tiers] == ["Foundation", "Core", "Challenge"]
     validate_family(strings, first)
     for tier in first.tiers:
@@ -82,10 +83,3 @@ def test_family_is_deterministic_synchronized_and_round_trippable() -> None:
         assert [measure.duration for part in reparsed.parts for measure in part.measures] == [
             measure.duration for part in strings.parts for measure in part.measures
         ]
-
-
-def test_candidate_input_order_does_not_change_manifest() -> None:
-    strings, _ = _scores()
-    forward = generate_arrangement_family(strings, candidate_order="forward")
-    reverse = generate_arrangement_family(strings, candidate_order="reverse")
-    assert forward.manifest == reverse.manifest

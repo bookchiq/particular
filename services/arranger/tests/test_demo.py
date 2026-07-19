@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from particular.demo import MAX_UPLOAD_BYTES, create_server
+from particular.demo import MAX_JOBS, MAX_UPLOAD_BYTES, create_server
 
 ROOT = Path(__file__).parents[3]
 FIXTURE = ROOT / "evaluation/fixtures/mixed-ensemble-transposition.musicxml"
@@ -66,6 +66,23 @@ def test_valid_generation_and_allowlisted_download(demo_server: tuple[str, int])
     assert response.status == 200
     assert response.getheader("Content-Type") == "application/vnd.recordare.musicxml+xml"
     assert b"score-partwise" in response.read()
+    connection.close()
+
+
+def test_evicts_oldest_completed_job(demo_server: tuple[str, int]) -> None:
+    first_download: str | None = None
+    for index in range(MAX_JOBS + 1):
+        status, payload = _post(demo_server, FIXTURE.read_bytes())
+        assert status == 200
+        if index == 0:
+            first_download = cast(dict[str, str], payload["artifacts"])["foundation"]
+
+    assert first_download is not None
+    connection = http.client.HTTPConnection(*demo_server)
+    connection.request("GET", first_download)
+    response = connection.getresponse()
+    assert response.status == 404
+    response.read()
     connection.close()
 
 

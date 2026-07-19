@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from particular.domain.score import Score
 from particular.exporters.musicxml import semantic_fingerprint
 from particular.importers.musicxml import parse_musicxml
 from particular.importers.security import DEFAULT_ARCHIVE_LIMITS, ArchiveLimits, extract_mxl
@@ -26,7 +27,12 @@ def preflight(path: Path, limits: ArchiveLimits = DEFAULT_ARCHIVE_LIMITS) -> Pre
     data = path.read_bytes()
     if path.suffix.lower() == ".mxl":
         data = extract_mxl(data, limits)
-    score = parse_musicxml(data)
+    return summarize_preflight(parse_musicxml(data))
+
+
+def summarize_preflight(score: Score) -> PreflightReport:
+    """Summarize an already parsed score without repeating intake work."""
+
     return PreflightReport(
         accepted=True,
         part_count=len(score.parts),

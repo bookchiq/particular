@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlsplit
 from particular.application import generate_to_directory
 
 MAX_UPLOAD_BYTES = 2_000_000
+MAX_JOBS = 8
 REPOSITORY_ROOT = Path(__file__).parents[3]
 PUBLIC_ROOT = REPOSITORY_ROOT / "apps/web/public"
 ARTIFACTS = {
@@ -51,6 +52,16 @@ class DemoServer(ThreadingHTTPServer):
     def server_close(self) -> None:
         super().server_close()
         shutil.rmtree(self.storage_root, ignore_errors=True)
+
+    def register_job(self, job_id: str, output: Path) -> None:
+        """Register an artifact directory and evict the oldest completed job."""
+
+        with self.jobs_lock:
+            self.jobs[job_id] = output
+            while len(self.jobs) > MAX_JOBS:
+                oldest_job_id = next(iter(self.jobs))
+                expired = self.jobs.pop(oldest_job_id)
+                shutil.rmtree(expired.parent, ignore_errors=True)
 
 
 class DemoHandler(BaseHTTPRequestHandler):
@@ -115,12 +126,7 @@ class DemoHandler(BaseHTTPRequestHandler):
             )
             return
         source.unlink(missing_ok=True)
-        with self.server.jobs_lock:
-            self.server.jobs[job_id] = output
-        for change in manifest["changes"]:
-            pieces = change["candidate_id"].split(":")
-            change["part_id"] = pieces[2] if len(pieces) > 2 else "unknown"
-            change["measure"] = pieces[3] if len(pieces) > 3 else "unknown"
+        self.server.register_job(job_id, output)
         self._json(
             HTTPStatus.OK,
             {

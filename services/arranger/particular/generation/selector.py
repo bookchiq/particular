@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from particular.analysis.difficulty import instrument_range
-from particular.analysis.roles import analyze_roles
+from particular.analysis.roles import protected_locators
 from particular.domain.score import Event, Measure, Part, Score, SourceLocator
 from particular.generation.candidates import Candidate
 from particular.generation.operators import adjust_octave_range, reduce_rhythm, thin_repetitions
@@ -21,6 +21,8 @@ class TierScore:
 class ManifestChange:
     tier: str
     candidate_id: str
+    part_id: str
+    measure: str
     operator: str
     status: str
     explanation: str
@@ -59,17 +61,10 @@ def _replace_events(score: Score, candidates: tuple[Candidate, ...]) -> Score:
     return replace(score, parts=tuple(parts))
 
 
-def generate_arrangement_family(
-    score: Score, *, candidate_order: str = "forward"
-) -> ArrangementFamily:
+def generate_arrangement_family(score: Score) -> ArrangementFamily:
     """Generate three compatible tiers with deterministic conflict resolution."""
 
-    role_labels = analyze_roles(score)
-    protected = frozenset(
-        label.locator
-        for label in role_labels
-        if label.role in {"melody", "bass", "exposed_entrance"} and label.confidence >= 0.8
-    )
+    protected = protected_locators(score)
     proposed: list[Candidate] = []
     for part in score.parts:
         minimum, maximum = instrument_range(part)
@@ -83,8 +78,6 @@ def generate_arrangement_family(
                     thin_repetitions(measure.events, protected),
                 )
             )
-    if candidate_order == "reverse":
-        proposed.reverse()
     proposed.sort(key=lambda candidate: candidate.id)
     changes: list[ManifestChange] = []
     tiers: list[TierScore] = []
@@ -107,6 +100,8 @@ def generate_arrangement_family(
                 ManifestChange(
                     tier,
                     candidate.id,
+                    candidate.locators[0].part_id,
+                    candidate.locators[0].measure_number,
                     candidate.operator,
                     status,
                     candidate.explanation,

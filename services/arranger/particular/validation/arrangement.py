@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from particular.analysis.difficulty import instrument_range
-from particular.analysis.roles import analyze_roles
+from particular.analysis.roles import protected_locators
 from particular.domain.score import Score
 from particular.generation.selector import ArrangementFamily
 
@@ -17,11 +17,7 @@ def validate_family(source: Score, family: ArrangementFamily) -> None:
         (part.id, [(measure.number, measure.duration) for measure in part.measures])
         for part in source.parts
     ]
-    protected = {
-        label.locator
-        for label in analyze_roles(source)
-        if label.role in {"melody", "bass", "exposed_entrance"} and label.confidence >= 0.8
-    }
+    protected = protected_locators(source)
     counts: list[int] = []
     for tier in family.tiers:
         shape = [

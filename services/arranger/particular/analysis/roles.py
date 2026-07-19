@@ -5,7 +5,17 @@ from __future__ import annotations
 from collections import defaultdict
 
 from particular.domain.roles import RoleLabel
-from particular.domain.score import Event, Score
+from particular.domain.score import Event, Score, SourceLocator
+
+
+def protected_locators(score: Score) -> frozenset[SourceLocator]:
+    """Return events covered by the arrangement family's hard role policy."""
+
+    return frozenset(
+        label.locator
+        for label in analyze_roles(score)
+        if label.role in {"melody", "bass", "exposed_entrance"} and label.confidence >= 0.8
+    )
 
 
 def analyze_roles(score: Score) -> tuple[RoleLabel, ...]:

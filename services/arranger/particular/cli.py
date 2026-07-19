@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from particular.application import analyze_score, generate_to_directory, load_score
-from particular.preflight import PreflightReport
+from particular.preflight import summarize_preflight
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -28,15 +28,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def _preflight(source: Path) -> dict[str, Any]:
     score, _ = load_score(source)
-    report = PreflightReport(
-        accepted=True,
-        part_count=len(score.parts),
-        measure_count=sum(len(part.measures) for part in score.parts),
-        warning_count=len(score.coverage_warnings),
-        export_capable=score.export_capable,
-        semantic_fingerprint=analyze_score(score)["semantic_fingerprint"],
-    )
-    return asdict(report)
+    return asdict(summarize_preflight(score))
 
 
 def main(argv: Sequence[str] | None = None) -> int:

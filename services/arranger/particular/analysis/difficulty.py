@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from particular.domain.score import Part
 PROFILE_ROOT = Path(__file__).parents[1] / "profiles"
 
 
+@cache
 def _load(name: str) -> dict[str, Any]:
     value = json.loads((PROFILE_ROOT / name).read_text(encoding="utf-8"))
     if not isinstance(value, dict):
