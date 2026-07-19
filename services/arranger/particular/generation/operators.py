@@ -68,7 +68,7 @@ def reduce_rhythm(
         candidate_id(operator, pair),
         operator,
         1,
-        ("Foundation",),
+        ("Foundation", "Core"),
         tuple(item.locator for item in pair),
         pair,
         (merged,),
@@ -120,7 +120,7 @@ def adjust_octave_range(
         candidate_id(operator, (target,)),
         operator,
         1,
-        ("Foundation", "Core"),
+        ("Foundation", "Core", "Challenge"),
         (target.locator,),
         (target,),
         (changed,),
@@ -128,6 +128,7 @@ def adjust_octave_range(
         f"Note moved {abs(offset) // 12} octave toward the configured range",
         ("rhythm and onset retained",),
         True,
+        required_for_safety=True,
     )
 
 
@@ -161,7 +162,7 @@ def thin_repetitions(events: tuple[Event, ...], protected: frozenset[SourceLocat
         candidate_id(operator, pair),
         operator,
         1,
-        ("Foundation",),
+        ("Foundation", "Core"),
         tuple(event.locator for event in pair),
         pair,
         (pair[0], rest),

@@ -22,6 +22,14 @@ Every passage retains its vector components and source locators. A tier policy t
 - **Challenge:** retains most source detail and may regularize only exceptional or non-idiomatic demands.
 - **Original:** the unchanged comparison state, not a generated difficulty tier.
 
+The current deterministic policy evaluates each safe transformation against the difficulty
+vector for its containing measure. Relevant density and rhythmic features are normalized to a
+0–1 pressure and compared with the versioned target for each tier. Foundation therefore accepts
+more reductions than Core. Challenge deliberately retains the source's musical detail and only
+accepts exceptional range corrections required for instrument safety. If a tier remains unchanged,
+its manifest entry says whether no safe candidate exceeded its target or the Challenge fidelity
+policy retained the source.
+
 Tier labels never promise equivalence to a school year, examination syllabus, or universal player level. Directors see the changed dimensions and remain responsible for suitability.
 
 ## Acceptance boundary
