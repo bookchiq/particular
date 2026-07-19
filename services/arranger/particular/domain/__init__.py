@@ -1,0 +1,1 @@
+"""Immutable musical domain records."""

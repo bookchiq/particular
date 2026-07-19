@@ -35,3 +35,4 @@ files = ["services", "evaluation"]
 [tool.pytest.ini_options]
 testpaths = ["services/arranger/tests", "evaluation"]
 addopts = "--strict-config --strict-markers"
+pythonpath = ["."]

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "profiles": {
+    "violin": {
+      "names": ["violin", "violin i", "violin ii"],
+      "written_range": [55, 103]
+    },
+    "viola": { "names": ["viola"], "written_range": [48, 88] },
+    "cello": { "names": ["cello", "violoncello"], "written_range": [36, 76] },
+    "flute": { "names": ["flute"], "written_range": [60, 96] },
+    "b-flat-clarinet": {
+      "names": ["clarinet in b-flat", "b-flat clarinet"],
+      "written_range": [50, 94]
+    },
+    "generic": { "names": [], "written_range": [36, 96] }
+  }
+}
