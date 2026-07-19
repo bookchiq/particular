@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "mixed-ensemble-transposition",
+      "path": "evaluation/fixtures/mixed-ensemble-transposition.musicxml",
+      "title": "Three Roles in Concert C",
+      "composer": "Particular contributors",
+      "work_status": "original",
+      "source": "Created in-repository on 2026-07-19 as an original deterministic test fixture",
+      "encoding_license": "CC0-1.0",
+      "instrumentation": [
+        {"part": "P1", "instrument": "Flute", "family": "woodwinds"},
+        {"part": "P2", "instrument": "B-flat Clarinet", "family": "woodwinds"},
+        {"part": "P3", "instrument": "Viola", "family": "strings"},
+        {"part": "P4", "instrument": "Cello", "family": "strings"}
+      ],
+      "sha256": "abb3888abc0aac9bfc5ecdf13d2ead0647873887cedef0b6b11af6f943387f9d",
+      "expected_result": "accept",
+      "parser_coverage": ["attributes", "directions", "harmony-role", "notes", "transposition"],
+      "test_uses": ["melody-coverage", "bass-coverage", "harmonic-coverage", "written-sounding-pitch"]
+    },
+    {
+      "id": "string-orchestra-second-violin",
+      "path": "evaluation/fixtures/string-orchestra-second-violin.musicxml",
+      "title": "Second Violin Sprint",
+      "composer": "Particular contributors",
+      "work_status": "original",
+      "source": "Created in-repository on 2026-07-19 as an original deterministic test fixture",
+      "encoding_license": "CC0-1.0",
+      "instrumentation": [
+        {"part": "P1", "instrument": "Violin I", "family": "strings"},
+        {"part": "P2", "instrument": "Violin II", "family": "strings"},
+        {"part": "P3", "instrument": "Viola", "family": "strings"},
+        {"part": "P4", "instrument": "Cello", "family": "strings"}
+      ],
+      "sha256": "33415bf99138c15f5eefdaac75bbaac9ea601f49522a999927527a74aeabadfb",
+      "expected_result": "accept",
+      "parser_coverage": ["accidentals", "attributes", "notes", "rests", "ties"],
+      "test_uses": ["difficulty-density", "leap-analysis", "range-analysis", "rhythm-reduction", "role-preservation"]
+    }
+  ]
+}
