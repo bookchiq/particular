@@ -114,6 +114,13 @@ def test_rejects_oversize_and_unsupported_filename(demo_server: tuple[str, int])
     assert status == 415
 
 
+def test_malformed_score_returns_structured_error(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, b"<score-partwise>")
+    assert status == 400
+    assert payload["error"] == "generation_failed"
+    assert "score-partwise" not in payload["message"]
+
+
 def test_static_page_has_accessible_review_flow() -> None:
     html = (ROOT / "apps/web/public/index.html").read_text()
     assert '<label for="score-file">' in html

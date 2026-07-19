@@ -20,6 +20,14 @@ from particular.importers.security import extract_mxl
 from particular.validation.arrangement import validate_family
 
 ENGINE_VERSION = "0.0.0"
+ARTIFACT_FILENAMES = {
+    "original": "original-normalized.musicxml",
+    "foundation": "foundation.musicxml",
+    "core": "core.musicxml",
+    "challenge": "challenge.musicxml",
+    "manifest": "manifest.json",
+    "analysis": "analysis.json",
+}
 
 
 def load_score(path: Path) -> tuple[Score, str]:
@@ -88,19 +96,15 @@ def generate_to_directory(source_path: Path, output_path: Path) -> dict[str, Any
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output_path.name}-", dir=output_path.parent))
     try:
-        (temporary / "original-normalized.musicxml").write_bytes(export_musicxml(score))
-        filenames = {
-            "Foundation": "foundation.musicxml",
-            "Core": "core.musicxml",
-            "Challenge": "challenge.musicxml",
-        }
+        (temporary / ARTIFACT_FILENAMES["original"]).write_bytes(export_musicxml(score))
         for tier in family.tiers:
-            (temporary / filenames[tier.name]).write_bytes(export_musicxml(tier.score))
-        (temporary / "manifest.json").write_text(
+            artifact = ARTIFACT_FILENAMES[tier.name.casefold()]
+            (temporary / artifact).write_bytes(export_musicxml(tier.score))
+        (temporary / ARTIFACT_FILENAMES["manifest"]).write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        (temporary / "analysis.json").write_text(
+        (temporary / ARTIFACT_FILENAMES["analysis"]).write_text(
             json.dumps(analysis, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )

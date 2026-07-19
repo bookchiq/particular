@@ -37,17 +37,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = _parser().parse_args(argv)
     try:
         if arguments.command == "preflight":
-            result = _preflight(arguments.source)
+            data = _preflight(arguments.source)
         elif arguments.command == "analyze":
             score, _ = load_score(arguments.source)
-            result = analyze_score(score)
+            data = analyze_score(score)
         else:
             manifest = generate_to_directory(arguments.source, arguments.output)
-            result = {
-                "ok": True,
+            data = {
                 "output": str(arguments.output),
                 "source_sha256": manifest["source_sha256"],
             }
+        result = {"ok": True, "command": arguments.command, "data": data}
         print(json.dumps(result, sort_keys=True))
         return 0
     except (OSError, ValueError) as error:

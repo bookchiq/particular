@@ -26,8 +26,14 @@ DEFAULT_ARCHIVE_LIMITS = ArchiveLimits()
 def validate_xml_bytes(data: bytes) -> None:
     """Reject XML constructs that can resolve or expand external content."""
 
-    lowered = data.lower()
-    if b"<!doctype" in lowered or b"<!entity" in lowered:
+    if b"\x00" in data:
+        raise UnsafeScoreError("MusicXML must be UTF-8 encoded")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise UnsafeScoreError("MusicXML must be UTF-8 encoded") from error
+    lowered = text.casefold()
+    if "<!doctype" in lowered or "<!entity" in lowered:
         raise UnsafeScoreError("DOCTYPE and entity declarations are not allowed")
 
 
@@ -65,6 +71,9 @@ def extract_mxl(data: bytes, limits: ArchiveLimits = DEFAULT_ARCHIVE_LIMITS) -> 
                 candidates.append(entry)
         if len(candidates) != 1:
             raise UnsafeScoreError("MXL must contain exactly one score XML document")
-        contents = archive.read(candidates[0])
+        try:
+            contents = archive.read(candidates[0])
+        except (zipfile.BadZipFile, RuntimeError, NotImplementedError, OSError) as error:
+            raise UnsafeScoreError("MXL score entry cannot be read safely") from error
     validate_xml_bytes(contents)
     return contents

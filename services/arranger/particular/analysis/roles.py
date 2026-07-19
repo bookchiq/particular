@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from fractions import Fraction
 
 from particular.domain.roles import RoleLabel
 from particular.domain.score import Event, Score, SourceLocator
@@ -21,16 +22,16 @@ def protected_locators(score: Score) -> frozenset[SourceLocator]:
 def analyze_roles(score: Score) -> tuple[RoleLabel, ...]:
     """Label observable ensemble roles and conservatively protect uncertain material."""
 
-    aligned: dict[tuple[int, int], list[Event]] = defaultdict(list)
+    aligned: dict[Fraction, list[Event]] = defaultdict(list)
     for part in score.parts:
-        measure_offset = 0
-        for measure_index, measure in enumerate(part.measures):
+        measure_offset = Fraction()
+        for measure in part.measures:
             for event in measure.events:
                 if event.kind == "note" and event.sounding_pitch is not None:
-                    aligned[(measure_index, measure_offset + event.onset)].append(event)
-            measure_offset += measure.nominal_duration
+                    aligned[measure_offset + Fraction(event.onset, measure.divisions)].append(event)
+            measure_offset += Fraction(measure.nominal_duration, measure.divisions)
     labels: list[RoleLabel] = []
-    for (_, onset), events in sorted(aligned.items()):
+    for onset, events in sorted(aligned.items()):
         pitches = [event.sounding_pitch for event in events if event.sounding_pitch is not None]
         low, high = min(pitches), max(pitches)
         ambiguous = low == high or pitches.count(high) > 1

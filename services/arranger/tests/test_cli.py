@@ -39,11 +39,15 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
 def test_preflight_and_analyze_emit_structured_json(capsys: object) -> None:
     assert main(["preflight", str(FIXTURE)]) == 0
     preflight_output = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
-    assert preflight_output["accepted"] is True
+    assert preflight_output["ok"] is True
+    assert preflight_output["command"] == "preflight"
+    assert preflight_output["data"]["accepted"] is True
 
     assert main(["analyze", str(FIXTURE)]) == 0
     analysis_output = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
-    assert analysis_output["parts"][1]["profile_id"] == "violin"
+    assert analysis_output["ok"] is True
+    assert analysis_output["command"] == "analyze"
+    assert analysis_output["data"]["parts"][1]["profile_id"] == "violin"
 
 
 def test_invalid_input_leaves_no_output_and_returns_json_error(

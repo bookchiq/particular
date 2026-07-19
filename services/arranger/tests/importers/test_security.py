@@ -4,7 +4,12 @@ import io
 import zipfile
 
 import pytest
-from particular.importers.security import ArchiveLimits, UnsafeScoreError, extract_mxl
+from particular.importers.security import (
+    ArchiveLimits,
+    UnsafeScoreError,
+    extract_mxl,
+    validate_xml_bytes,
+)
 
 
 def _archive(entries: dict[str, bytes], compression: int = zipfile.ZIP_STORED) -> bytes:
@@ -19,6 +24,14 @@ def _archive(entries: dict[str, bytes], compression: int = zipfile.ZIP_STORED) -
 def test_rejects_doctype_and_entities(marker: bytes) -> None:
     with pytest.raises(UnsafeScoreError):
         extract_mxl(_archive({"score.musicxml": marker}))
+
+
+def test_rejects_non_utf8_xml_before_declaration_scan() -> None:
+    encoded = "<!DOCTYPE score-partwise><score-partwise/>".encode("utf-16")
+    with pytest.raises(UnsafeScoreError, match="UTF-8"):
+        validate_xml_bytes(encoded)
+    with pytest.raises(UnsafeScoreError, match="UTF-8"):
+        extract_mxl(_archive({"score.musicxml": encoded}))
 
 
 def test_rejects_path_traversal_and_nested_archives() -> None:

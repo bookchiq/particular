@@ -118,6 +118,8 @@ def thin_repetitions(events: tuple[Event, ...], protected: frozenset[SourceLocat
             break
     if pair is None:
         return _rejected(operator, events[:1], "no repeated accompaniment notes to thin")
+    if any(event.tie_start or event.tie_stop for event in pair):
+        return _rejected(operator, pair, "tied notes cannot be thinned safely")
     if pair[1].locator in protected:
         return _rejected(operator, pair, "protected role prevents density thinning")
     rest = replace(pair[1], kind="rest", written_pitch=None, sounding_pitch=None)

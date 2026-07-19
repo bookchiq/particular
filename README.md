@@ -66,7 +66,7 @@ uv run python -m particular.demo
 
 Open `http://127.0.0.1:8765`, attest that you are authorized to adapt the score, and upload MusicXML. The interface shows instrument-aware difficulty features and the accepted or rejected change ledger for each tier, then offers the normalized source, generated variants, analysis, and manifest for download.
 
-The demo binds to loopback only, stores each job in private temporary storage for the server's lifetime, and makes no remote AI requests. Generated parts require director review before rehearsal or distribution.
+The demo binds to loopback only, stores up to eight completed jobs in private temporary storage, removes older artifacts as new jobs finish, and clears everything when the server stops. It makes no remote AI requests. Generated parts require director review before rehearsal or distribution.
 
 ## Contributing
 

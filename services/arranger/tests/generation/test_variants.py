@@ -3,12 +3,13 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 from particular.domain.score import Score
 from particular.exporters.musicxml import export_musicxml
 from particular.generation.operators import adjust_octave_range, reduce_rhythm, thin_repetitions
 from particular.generation.selector import generate_arrangement_family
 from particular.importers.musicxml import parse_musicxml
-from particular.validation.arrangement import validate_family
+from particular.validation.arrangement import ArrangementValidationError, validate_family
 
 ROOT = Path(__file__).parents[4]
 
@@ -68,6 +69,11 @@ def test_density_thinning_preserves_duration_and_rejects_melody_lock() -> None:
     rejected = thin_repetitions(repeated, frozenset({repeated[1].locator}))
     assert rejected.accepted is False
 
+    tied = (replace(repeated[0], tie_start=True), replace(repeated[1], tie_stop=True))
+    rejected_tie = thin_repetitions(tied, frozenset())
+    assert rejected_tie.accepted is False
+    assert rejected_tie.rejection_reason == "tied notes cannot be thinned safely"
+
 
 def test_family_is_deterministic_synchronized_and_round_trippable() -> None:
     strings, _ = _scores()
@@ -83,3 +89,35 @@ def test_family_is_deterministic_synchronized_and_round_trippable() -> None:
         assert [measure.duration for part in reparsed.parts for measure in part.measures] == [
             measure.duration for part in strings.parts for measure in part.measures
         ]
+
+
+def test_hard_validator_rejects_duration_and_range_regressions() -> None:
+    strings, _ = _scores()
+    family = generate_arrangement_family(strings)
+    foundation = family.tiers[0]
+    first_part = foundation.score.parts[0]
+    first_measure = first_part.measures[0]
+
+    bad_duration_measure = replace(first_measure, duration=first_measure.duration + 1)
+    bad_duration_part = replace(
+        first_part, measures=(bad_duration_measure, *first_part.measures[1:])
+    )
+    bad_duration_score = replace(
+        foundation.score, parts=(bad_duration_part, *foundation.score.parts[1:])
+    )
+    bad_duration_family = replace(
+        family, tiers=(replace(foundation, score=bad_duration_score), *family.tiers[1:])
+    )
+    with pytest.raises(ArrangementValidationError, match="duration"):
+        validate_family(strings, bad_duration_family)
+
+    first_event = first_measure.events[0]
+    bad_range_event = replace(first_event, written_pitch=127, sounding_pitch=127)
+    bad_range_measure = replace(first_measure, events=(bad_range_event, *first_measure.events[1:]))
+    bad_range_part = replace(first_part, measures=(bad_range_measure, *first_part.measures[1:]))
+    bad_range_score = replace(foundation.score, parts=(bad_range_part, *foundation.score.parts[1:]))
+    bad_range_family = replace(
+        family, tiers=(replace(foundation, score=bad_range_score), *family.tiers[1:])
+    )
+    with pytest.raises(ArrangementValidationError, match="out-of-range"):
+        validate_family(strings, bad_range_family)

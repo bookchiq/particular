@@ -15,20 +15,13 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlsplit
 
-from particular.application import generate_to_directory
+from particular.application import ARTIFACT_FILENAMES, generate_to_directory
 
 MAX_UPLOAD_BYTES = 2_000_000
 MAX_JOBS = 8
 REPOSITORY_ROOT = Path(__file__).parents[3]
 PUBLIC_ROOT = REPOSITORY_ROOT / "apps/web/public"
-ARTIFACTS = {
-    "original": "original-normalized.musicxml",
-    "foundation": "foundation.musicxml",
-    "core": "core.musicxml",
-    "challenge": "challenge.musicxml",
-    "manifest": "manifest.json",
-    "analysis": "analysis.json",
-}
+ARTIFACTS = ARTIFACT_FILENAMES
 STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/app.css": ("app.css", "text/css; charset=utf-8"),
@@ -110,11 +103,11 @@ class DemoHandler(BaseHTTPRequestHandler):
             return
         job_id = secrets.token_urlsafe(18)
         job_root = self.server.storage_root / job_id
-        job_root.mkdir()
-        source = job_root / f"source{Path(filename).suffix.casefold()}"
-        source.write_bytes(contents)
-        output = job_root / "artifacts"
         try:
+            job_root.mkdir()
+            source = job_root / f"source{Path(filename).suffix.casefold()}"
+            source.write_bytes(contents)
+            output = job_root / "artifacts"
             generate_to_directory(source, output)
             manifest = json.loads((output / ARTIFACTS["manifest"]).read_text())
             analysis = json.loads((output / ARTIFACTS["analysis"]).read_text())
@@ -131,6 +124,7 @@ class DemoHandler(BaseHTTPRequestHandler):
             HTTPStatus.OK,
             {
                 "review_required": True,
+                "retention": {"max_completed_jobs": MAX_JOBS},
                 "analysis": analysis,
                 "manifest": manifest,
                 "artifacts": {key: f"/artifacts/{job_id}/{key}" for key in ARTIFACTS},
@@ -155,14 +149,17 @@ class DemoHandler(BaseHTTPRequestHandler):
         job_id, artifact = pieces[2], pieces[3]
         with self.server.jobs_lock:
             output = self.server.jobs.get(job_id)
-        if output is None:
+            if output is None:
+                artifact_body = None
+            else:
+                target = output / ARTIFACTS[artifact]
+                try:
+                    artifact_body = target.read_bytes()
+                except OSError:
+                    artifact_body = None
+        if artifact_body is None:
             self._json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
             return
-        target = output / ARTIFACTS[artifact]
-        if not target.is_file():
-            self._json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
-            return
-        body = target.read_bytes()
         content_type = (
             "application/json"
             if target.suffix == ".json"
@@ -170,11 +167,11 @@ class DemoHandler(BaseHTTPRequestHandler):
         )
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Length", str(len(artifact_body)))
         self.send_header("Content-Disposition", f'attachment; filename="{target.name}"')
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)
+        self.wfile.write(artifact_body)
 
 
 def create_server(host: str = "127.0.0.1", port: int = 8765) -> DemoServer:
