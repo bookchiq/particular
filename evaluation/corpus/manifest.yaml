@@ -15,7 +15,7 @@
         {"part": "P3", "instrument": "Viola", "family": "strings"},
         {"part": "P4", "instrument": "Cello", "family": "strings"}
       ],
-      "sha256": "abb3888abc0aac9bfc5ecdf13d2ead0647873887cedef0b6b11af6f943387f9d",
+      "sha256": "cf5725bc46185634b48f9cd7a4a2d84a76efb4d9d719482004889b900e144af1",
       "expected_result": "accept",
       "parser_coverage": ["attributes", "directions", "harmony-role", "notes", "transposition"],
       "test_uses": ["melody-coverage", "bass-coverage", "harmonic-coverage", "written-sounding-pitch"]
@@ -34,7 +34,7 @@
         {"part": "P3", "instrument": "Viola", "family": "strings"},
         {"part": "P4", "instrument": "Cello", "family": "strings"}
       ],
-      "sha256": "33415bf99138c15f5eefdaac75bbaac9ea601f49522a999927527a74aeabadfb",
+      "sha256": "d4d9f6ccf8a75d0b998e2d67782c8723c59a5a28bcfe9cb8ab2447f702b24863",
       "expected_result": "accept",
       "parser_coverage": ["accidentals", "attributes", "notes", "rests", "ties"],
       "test_uses": ["difficulty-density", "leap-analysis", "range-analysis", "rhythm-reduction", "role-preservation"]

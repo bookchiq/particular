@@ -1,0 +1,1 @@
+"""Canonical score output adapters."""
