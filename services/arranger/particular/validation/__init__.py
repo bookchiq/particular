@@ -1,0 +1,1 @@
+"""Hard arrangement validators."""

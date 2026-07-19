@@ -27,6 +27,14 @@ def _profile_for(part: Part, profiles: dict[str, Any]) -> str:
     return "generic"
 
 
+def instrument_range(part: Part) -> tuple[int, int]:
+    """Return the declared written range for a part's matched profile."""
+
+    document = _load("instruments.json")
+    profile = document["profiles"][_profile_for(part, document["profiles"])]
+    return int(profile["written_range"][0]), int(profile["written_range"][1])
+
+
 def analyze_part(part: Part) -> DifficultyAnalysis:
     """Compute independent raw features without presenting a universal grade."""
 
