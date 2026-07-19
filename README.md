@@ -14,7 +14,7 @@ The project is at the foundation stage. The [MVP plan](docs/plans/2026-07-18-001
 - `infrastructure`: deployment and isolated-worker assets
 - `docs`: product decisions, architecture records, and plans
 
-Musical decisions belong in `services/arranger`; the web application orchestrates workflows and presents results. See [ADR 0001](docs/architecture/0001-system-boundaries.md) and [CONCEPTS.md](CONCEPTS.md).
+Musical decisions belong in `services/arranger`; the web application orchestrates workflows and presents results. See [ADR 0001](docs/architecture/0001-system-boundaries.md), the [supported MusicXML semantics](docs/architecture/supported-musicxml.md), and [CONCEPTS.md](CONCEPTS.md).
 
 ## Prerequisites
 

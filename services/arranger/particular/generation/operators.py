@@ -3,9 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from fractions import Fraction
 
 from particular.domain.score import Event, SourceLocator
 from particular.generation.candidates import Candidate, candidate_id
+
+NOTE_TYPES = {
+    Fraction(4): "whole",
+    Fraction(2): "half",
+    Fraction(1): "quarter",
+    Fraction(1, 2): "eighth",
+    Fraction(1, 4): "16th",
+    Fraction(1, 8): "32nd",
+    Fraction(1, 16): "64th",
+}
 
 
 def _rejected(operator: str, events: tuple[Event, ...], reason: str) -> Candidate:
@@ -25,7 +36,11 @@ def _rejected(operator: str, events: tuple[Event, ...], reason: str) -> Candidat
     )
 
 
-def reduce_rhythm(events: tuple[Event, ...], protected: frozenset[SourceLocator]) -> Candidate:
+def reduce_rhythm(
+    events: tuple[Event, ...],
+    protected: frozenset[SourceLocator],
+    divisions: int,
+) -> Candidate:
     operator = "rhythm-merge"
     pair: tuple[Event, Event] | None = None
     for left, right in zip(events, events[1:], strict=False):
@@ -38,9 +53,17 @@ def reduce_rhythm(events: tuple[Event, ...], protected: frozenset[SourceLocator]
             break
     if pair is None:
         return _rejected(operator, events[:1], "no adjacent notes can be merged")
+    if pair[0].written_pitch is None or pair[0].written_pitch != pair[1].written_pitch:
+        return _rejected(operator, pair, "adjacent notes have different pitches")
+    if any(event.tie_start or event.tie_stop for event in pair):
+        return _rejected(operator, pair, "tied notes cannot be merged safely")
     if any(event.locator in protected for event in pair):
         return _rejected(operator, pair, "protected role prevents rhythmic merge")
-    merged = replace(pair[0], duration=pair[0].duration + pair[1].duration)
+    merged_duration = pair[0].duration + pair[1].duration
+    note_type = NOTE_TYPES.get(Fraction(merged_duration, divisions))
+    if note_type is None:
+        return _rejected(operator, pair, "merged duration has no supported note type")
+    merged = replace(pair[0], duration=merged_duration, note_type=note_type)
     return Candidate(
         candidate_id(operator, pair),
         operator,
@@ -89,6 +112,9 @@ def adjust_octave_range(
         target,
         written_pitch=adjusted,
         sounding_pitch=None if target.sounding_pitch is None else target.sounding_pitch + offset,
+        pitch_octave=(
+            None if target.pitch_octave is None else target.pitch_octave + (offset // 12)
+        ),
     )
     return Candidate(
         candidate_id(operator, (target,)),
@@ -122,7 +148,15 @@ def thin_repetitions(events: tuple[Event, ...], protected: frozenset[SourceLocat
         return _rejected(operator, pair, "tied notes cannot be thinned safely")
     if pair[1].locator in protected:
         return _rejected(operator, pair, "protected role prevents density thinning")
-    rest = replace(pair[1], kind="rest", written_pitch=None, sounding_pitch=None)
+    rest = replace(
+        pair[1],
+        kind="rest",
+        written_pitch=None,
+        sounding_pitch=None,
+        pitch_step=None,
+        pitch_alter=0,
+        pitch_octave=None,
+    )
     return Candidate(
         candidate_id(operator, pair),
         operator,

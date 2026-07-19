@@ -73,7 +73,7 @@ def generate_arrangement_family(score: Score) -> ArrangementFamily:
                 continue
             proposed.extend(
                 (
-                    reduce_rhythm(measure.events, protected),
+                    reduce_rhythm(measure.events, protected, measure.divisions),
                     adjust_octave_range(measure.events, minimum, maximum, protected),
                     thin_repetitions(measure.events, protected),
                 )

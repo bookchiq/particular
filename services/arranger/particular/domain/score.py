@@ -21,6 +21,13 @@ class CoverageWarning:
 
 
 @dataclass(frozen=True)
+class Direction:
+    words: str | None = None
+    tempo: float | None = None
+    placement: str | None = None
+
+
+@dataclass(frozen=True)
 class Event:
     kind: str
     onset: int
@@ -31,6 +38,10 @@ class Event:
     locator: SourceLocator
     tie_start: bool = False
     tie_stop: bool = False
+    pitch_step: str | None = None
+    pitch_alter: int = 0
+    pitch_octave: int | None = None
+    note_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +54,11 @@ class Measure:
     duration: int
     nominal_duration: int
     events: tuple[Event, ...]
+    key_fifths: int | None = None
+    key_mode: str | None = None
+    clef_sign: str | None = None
+    clef_line: int | None = None
+    directions: tuple[Direction, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -51,6 +67,7 @@ class Part:
     name: str
     chromatic_transposition: int
     measures: tuple[Measure, ...]
+    diatonic_transposition: int = 0
 
 
 @dataclass(frozen=True)
