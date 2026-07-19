@@ -71,7 +71,19 @@ def parse_musicxml(data: bytes) -> Score:
                 beat_type = _integer(attributes.find("./time/beat-type"), beat_type)
                 transpose = _integer(attributes.find("./transpose/chromatic"), transpose)
             events: list[Event] = []
-            for index, note in enumerate(measure_element.findall("note")):
+            cursor = 0
+            previous_onset = 0
+            for child in measure_element:
+                if child.tag in {"backup", "forward"}:
+                    movement = _integer(child.find("duration"), 0)
+                    cursor += movement if child.tag == "forward" else -movement
+                    if cursor < 0:
+                        raise MusicXMLParseError(f"{part_id} measure {number}: backup before start")
+                    continue
+                if child.tag != "note":
+                    continue
+                note = child
+                index = len(events)
                 voice = note.findtext("voice", default="1")
                 locator = SourceLocator(part_id, number, voice, index)
                 duration = _integer(note.find("duration"), 0)
@@ -80,9 +92,11 @@ def parse_musicxml(data: bytes) -> Score:
                         f"{part_id} measure {number}: duration must be positive"
                     )
                 written = _pitch(note)
+                onset = previous_onset if note.find("chord") is not None else cursor
                 events.append(
                     Event(
                         kind="rest" if note.find("rest") is not None else "note",
+                        onset=onset,
                         duration=duration,
                         voice=voice,
                         written_pitch=written,
@@ -92,6 +106,9 @@ def parse_musicxml(data: bytes) -> Score:
                         tie_stop=note.find("tie[@type='stop']") is not None,
                     )
                 )
+                previous_onset = onset
+                if note.find("chord") is None:
+                    cursor += duration
                 for descendant in note.iter():
                     if descendant.tag in UNSUPPORTED_TAGS:
                         warnings.append(
@@ -101,7 +118,7 @@ def parse_musicxml(data: bytes) -> Score:
                                 f"{descendant.tag} cannot be exported canonically",
                             )
                         )
-            duration = sum(event.duration for event in events)
+            duration = max((event.onset + event.duration for event in events), default=0)
             nominal = divisions * beats * 4 // beat_type
             measures.append(
                 Measure(

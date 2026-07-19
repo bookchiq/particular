@@ -23,6 +23,7 @@ class CoverageWarning:
 @dataclass(frozen=True)
 class Event:
     kind: str
+    onset: int
     duration: int
     voice: str
     written_pitch: int | None

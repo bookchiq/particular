@@ -1,0 +1,4 @@
+{
+  "version": 1,
+  "targets": {"Foundation": 0.35, "Core": 0.65, "Challenge": 0.9}
+}

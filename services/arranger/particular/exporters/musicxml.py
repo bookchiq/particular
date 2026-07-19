@@ -65,8 +65,18 @@ def export_musicxml(score: Score) -> bytes:
             if part.chromatic_transposition:
                 transpose = ET.SubElement(score_attributes, "transpose")
                 ET.SubElement(transpose, "chromatic").text = str(part.chromatic_transposition)
+            cursor = 0
+            previous_onset: int | None = None
             for event in measure.events:
+                is_chord = event.onset == previous_onset
+                if not is_chord and event.onset != cursor:
+                    movement_name = "forward" if event.onset > cursor else "backup"
+                    movement = ET.SubElement(measure_element, movement_name)
+                    ET.SubElement(movement, "duration").text = str(abs(event.onset - cursor))
+                    cursor = event.onset
                 note = ET.SubElement(measure_element, "note")
+                if is_chord:
+                    ET.SubElement(note, "chord")
                 if event.kind == "rest":
                     ET.SubElement(note, "rest")
                 elif event.written_pitch is not None:
@@ -79,6 +89,9 @@ def export_musicxml(score: Score) -> bytes:
                     ET.SubElement(note, "tie", {"type": "start"})
                 if event.tie_stop:
                     ET.SubElement(note, "tie", {"type": "stop"})
+                previous_onset = event.onset
+                if not is_chord:
+                    cursor += event.duration
     ET.indent(root, space="  ")
     return cast(
         bytes,
@@ -105,6 +118,7 @@ def semantic_fingerprint(score: Score) -> str:
                         "events": [
                             [
                                 event.kind,
+                                event.onset,
                                 event.duration,
                                 event.voice,
                                 event.written_pitch,
