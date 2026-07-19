@@ -1,0 +1,4 @@
+node_modules
+.venv
+pnpm-lock.yaml
+docs/plans
