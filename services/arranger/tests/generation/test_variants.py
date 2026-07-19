@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from particular.analysis.difficulty import analyze_part
 from particular.domain.score import Score
 from particular.exporters.musicxml import export_musicxml, semantic_fingerprint
 from particular.generation.operators import adjust_octave_range, reduce_rhythm, thin_repetitions
@@ -24,6 +25,51 @@ def _scores() -> tuple[Score, Score]:
     return (
         parse_musicxml((fixtures / "string-orchestra-second-violin.musicxml").read_bytes()),
         parse_musicxml((fixtures / "mixed-ensemble-transposition.musicxml").read_bytes()),
+    )
+
+
+def _tier_policy_score() -> Score:
+    medium = "".join(
+        "<note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration>"
+        "<type>eighth</type></note>"
+        for _ in range(7)
+    )
+    high = "".join(
+        "<note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration>"
+        "<type>16th</type></note>"
+        for _ in range(15)
+    )
+    return parse_musicxml(
+        f"""<score-partwise><part-list><score-part id="P1"><part-name>Viola</part-name>
+        </score-part></part-list><part id="P1"><measure number="1"><attributes>
+        <divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
+        </attributes><forward><duration>2</duration></forward>{medium}</measure>
+        <measure number="2"><forward><duration>1</duration></forward>{high}</measure>
+        </part></score-partwise>""".encode()
+    )
+
+
+def _unchanged_family(score: Score) -> ArrangementFamily:
+    targets = analyze_part(score.parts[0]).tier_targets
+    tiers = tuple(
+        TierScore(name, score, targets[name], "Unchanged test tier")
+        for name in ("Foundation", "Core", "Challenge")
+    )
+    return ArrangementFamily(tiers, GenerationManifest(2, ()))
+
+
+def _score_with_repeated_notes(durations: list[int], forward: int) -> Score:
+    notes = "".join(
+        f"<note><pitch><step>C</step><octave>4</octave></pitch><duration>{duration}</duration>"
+        "</note>"
+        for duration in durations
+    )
+    return parse_musicxml(
+        f"""<score-partwise><part-list><score-part id="P1"><part-name>Viola</part-name>
+        </score-part></part-list><part id="P1"><measure number="1"><attributes>
+        <divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
+        </attributes><forward><duration>{forward}</duration></forward>{notes}</measure>
+        </part></score-partwise>""".encode()
     )
 
 
@@ -114,11 +160,100 @@ def test_family_is_deterministic_synchronized_and_round_trippable() -> None:
     for tier in first.tiers:
         reparsed = parse_musicxml(export_musicxml(tier.score))
         assert semantic_fingerprint(reparsed) == semantic_fingerprint(tier.score)
-        reparsed_tiers.append(TierScore(tier.name, reparsed))
+        reparsed_tiers.append(TierScore(tier.name, reparsed, tier.target, tier.explanation))
         assert [measure.duration for part in reparsed.parts for measure in part.measures] == [
             measure.duration for part in strings.parts for measure in part.measures
         ]
     validate_family(strings, ArrangementFamily(tuple(reparsed_tiers), first.manifest))
+
+
+def test_tier_policy_uses_passage_difficulty_to_create_ordered_variants() -> None:
+    source = _tier_policy_score()
+
+    family = generate_arrangement_family(source)
+
+    vectors = [analyze_part(tier.score.parts[0]).vector for tier in family.tiers]
+    assert [vector.note_count for vector in vectors] == [20, 21, 22]
+    assert [tier.target for tier in family.tiers] == [0.35, 0.65, 0.9]
+    assert len({semantic_fingerprint(tier.score) for tier in family.tiers}) == 3
+    assert [
+        sum(
+            change.status == "accepted" for change in family.manifest.changes if change.tier == tier
+        )
+        for tier in ("Foundation", "Core", "Challenge")
+    ] == [2, 1, 0]
+    assert family.tiers[2].explanation.startswith("Unchanged: Challenge retains source detail")
+    validate_family(source, family)
+
+
+def test_tier_policy_explains_unchanged_below_target_passage() -> None:
+    source = _score_with_repeated_notes([4, 4], forward=8)
+
+    family = generate_arrangement_family(source)
+
+    assert all(tier.score == source for tier in family.tiers)
+    assert family.tiers[0].explanation == (
+        "Unchanged: no safe candidate exceeded the 0.35 Foundation target."
+    )
+    foundation_repetition = next(
+        change
+        for change in family.manifest.changes
+        if change.tier == "Foundation" and change.operator == "repetition-thin"
+    )
+    assert foundation_repetition.rejection_reason == (
+        "passage pressure 0.12 does not exceed target 0.35"
+    )
+
+
+def test_challenge_only_applies_typed_range_safety_correction() -> None:
+    source_score = _tier_policy_score()
+    part = source_score.parts[0]
+    measure = part.measures[0]
+    unsafe = replace(
+        measure.events[0],
+        written_pitch=100,
+        sounding_pitch=100,
+        pitch_step="E",
+        pitch_octave=7,
+    )
+    changed_measure = replace(measure, events=(unsafe, *measure.events[1:]))
+    changed_part = replace(part, measures=(changed_measure, *part.measures[1:]))
+    source_score = replace(source_score, parts=(changed_part,))
+
+    family = generate_arrangement_family(source_score)
+
+    challenge = family.tiers[2]
+    accepted = [
+        change
+        for change in family.manifest.changes
+        if change.tier == "Challenge" and change.status == "accepted"
+    ]
+    assert [change.operator for change in accepted] == ["octave-range"]
+    assert challenge.explanation == (
+        "Applied 1 range correction(s) required for instrument safety."
+    )
+    source_events = source_score.parts[0].measures[0].events
+    challenge_events = challenge.score.parts[0].measures[0].events
+    assert [event.locator for event in source_events if event not in challenge_events] == [
+        unsafe.locator
+    ]
+    validate_family(source_score, family)
+
+
+def test_overlapping_operators_resolve_consistently_across_tiers() -> None:
+    source = _score_with_repeated_notes([2, 2, 1, 2, 2, 2, 2, 2], forward=1)
+
+    family = generate_arrangement_family(source)
+
+    statuses = {
+        (change.tier, change.operator): change.status
+        for change in family.manifest.changes
+        if change.operator in {"repetition-thin", "rhythm-merge"}
+    }
+    assert statuses[("Foundation", "repetition-thin")] == "accepted"
+    assert statuses[("Core", "repetition-thin")] == "rejected"
+    assert statuses[("Foundation", "rhythm-merge")] == "rejected"
+    assert statuses[("Core", "rhythm-merge")] == "rejected"
 
 
 def test_hard_validator_rejects_duration_and_range_regressions() -> None:
@@ -299,10 +434,7 @@ def test_hard_validator_rejects_noncontiguous_ties() -> None:
         <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration>
         <tie type="stop"/></note></measure></part></score-partwise>"""
     )
-    family = ArrangementFamily(
-        tuple(TierScore(name, score) for name in ("Foundation", "Core", "Challenge")),
-        GenerationManifest(1, ()),
-    )
+    family = _unchanged_family(score)
 
     with pytest.raises(ArrangementValidationError, match="noncontiguous"):
         validate_family(score, family)
@@ -313,10 +445,7 @@ def test_hard_validator_rejects_duplicate_source_locators() -> None:
     part = strings.parts[0]
     duplicate = replace(part, measures=(*part.measures, part.measures[0]))
     score = replace(strings, parts=(duplicate, *strings.parts[1:]))
-    family = ArrangementFamily(
-        tuple(TierScore(name, score) for name in ("Foundation", "Core", "Challenge")),
-        GenerationManifest(1, ()),
-    )
+    family = _unchanged_family(score)
 
     with pytest.raises(ArrangementValidationError, match="duplicate source locator"):
         validate_family(score, family)

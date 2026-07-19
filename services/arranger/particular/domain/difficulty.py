@@ -23,3 +23,9 @@ class DifficultyAnalysis:
     vector: DifficultyVector
     tier_targets: dict[str, float]
     warning: str | None = None
+
+
+@dataclass(frozen=True)
+class TierPolicy:
+    version: int
+    targets: dict[str, float]

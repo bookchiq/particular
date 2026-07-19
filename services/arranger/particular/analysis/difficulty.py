@@ -7,7 +7,7 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
-from particular.domain.difficulty import DifficultyAnalysis, DifficultyVector
+from particular.domain.difficulty import DifficultyAnalysis, DifficultyVector, TierPolicy
 from particular.domain.score import Part
 
 PROFILE_ROOT = Path(__file__).parents[1] / "profiles"
@@ -37,11 +37,21 @@ def instrument_range(part: Part) -> tuple[int, int]:
     return int(profile["written_range"][0]), int(profile["written_range"][1])
 
 
+def tier_policy() -> TierPolicy:
+    """Return the configured deterministic tier policy."""
+
+    document = _load("tiers.json")
+    return TierPolicy(
+        version=int(document["version"]),
+        targets={key: float(value) for key, value in document["targets"].items()},
+    )
+
+
 def analyze_part(part: Part) -> DifficultyAnalysis:
     """Compute independent raw features without presenting a universal grade."""
 
     profile_document = _load("instruments.json")
-    tier_document = _load("tiers.json")
+    policy = tier_policy()
     profile_id = _profile_for(part, profile_document["profiles"])
     notes = [event for measure in part.measures for event in measure.events if event.kind == "note"]
     pitches = [event.written_pitch for event in notes if event.written_pitch is not None]
@@ -69,7 +79,7 @@ def analyze_part(part: Part) -> DifficultyAnalysis:
         profile_id=profile_id,
         profile_version=int(profile_document["version"]),
         vector=vector,
-        tier_targets={key: float(value) for key, value in tier_document["targets"].items()},
+        tier_targets=policy.targets,
         warning=(
             f"No instrument profile for {part.name!r}; generic constraints applied"
             if profile_id == "generic"

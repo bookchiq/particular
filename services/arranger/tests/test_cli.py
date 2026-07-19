@@ -26,13 +26,15 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
     manifest = json.loads((output / "manifest.json").read_text())
     assert len(manifest["source_sha256"]) == 64
     assert manifest["engine_version"] == "0.0.0"
-    assert manifest["policy_version"] == 1
+    assert manifest["policy_version"] == 2
     assert set(manifest["operator_versions"]) == {
         "octave-range",
         "repetition-thin",
         "rhythm-merge",
     }
     assert manifest["tiers"][0]["name"] == "Foundation"
+    assert manifest["tiers"][0]["target"] == 0.35
+    assert manifest["tiers"][2]["explanation"].startswith("Unchanged: Challenge")
     assert any(change["explanation"] for change in manifest["changes"])
 
 

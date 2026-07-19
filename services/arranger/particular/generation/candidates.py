@@ -21,6 +21,7 @@ class Candidate:
     role_effects: tuple[str, ...]
     accepted: bool
     rejection_reason: str | None = None
+    required_for_safety: bool = False
 
 
 def candidate_id(operator: str, events: tuple[Event, ...]) -> str:

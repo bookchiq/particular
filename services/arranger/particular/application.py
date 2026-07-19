@@ -76,7 +76,12 @@ def generation_manifest(
         "source_semantic_fingerprint": semantic_fingerprint(source),
         "operator_versions": dict(sorted(operator_versions.items())),
         "tiers": [
-            {"name": tier.name, "semantic_fingerprint": semantic_fingerprint(tier.score)}
+            {
+                "name": tier.name,
+                "target": tier.target,
+                "explanation": tier.explanation,
+                "semantic_fingerprint": semantic_fingerprint(tier.score),
+            }
             for tier in family.tiers
         ],
         "changes": changes,
