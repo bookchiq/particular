@@ -44,6 +44,18 @@ uv run pytest
 
 `pnpm check` runs formatting, linting, TypeScript checking, and workspace tests. The Python commands are intentionally separate so failures remain legible. The CI `evaluation` job is the separate corpus and musical-quality gate; it is currently a documented placeholder until U2 adds its schema and verifier.
 
+## Deterministic demo CLI
+
+Run the hackathon pipeline from the repository environment:
+
+```sh
+uv run python -m particular.cli preflight evaluation/fixtures/string-orchestra-second-violin.musicxml
+uv run python -m particular.cli analyze evaluation/fixtures/string-orchestra-second-violin.musicxml
+uv run python -m particular.cli generate evaluation/fixtures/string-orchestra-second-violin.musicxml demo-output
+```
+
+`generate` accepts `.musicxml`, `.xml`, and safely bounded `.mxl` inputs. The output directory must not already exist. Particular publishes the normalized original, all three deterministic tiers, an analysis report, and an auditable manifest together; invalid input does not leave a partial output directory. This baseline makes no remote AI requests.
+
 ## Contributing
 
 Read [AGENTS.md](AGENTS.md) before changing the repository. Work on a feature branch, keep changes scoped, use conventional commits, and update architecture or product documentation when a cross-cutting decision changes. Generated contracts must be reproducible; do not edit generated clients by hand.
