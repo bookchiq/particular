@@ -34,11 +34,14 @@ def _post(
     *,
     filename: str = "score.musicxml",
     attested: bool = True,
+    profile_overrides: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     connection = http.client.HTTPConnection(*address)
     headers = {"X-Particular-Filename": filename}
     if attested:
         headers["X-Particular-Rights-Attested"] = "true"
+    if profile_overrides is not None:
+        headers["X-Particular-Instrument-Profiles"] = json.dumps(profile_overrides)
     connection.request("POST", "/api/generate", body, headers)
     response = connection.getresponse()
     payload = cast(dict[str, Any], json.loads(response.read()))
@@ -57,6 +60,7 @@ def test_valid_generation_and_allowlisted_download(demo_server: tuple[str, int])
     assert status == 200
     assert payload["review_required"] is True
     assert len(payload["analysis"]["parts"]) == 4
+    assert "violin" in payload["analysis"]["available_instrument_profiles"]
     artifacts = cast(dict[str, str], payload["artifacts"])
     assert set(artifacts) == {"original", "foundation", "core", "challenge", "manifest", "analysis"}
 
@@ -67,6 +71,13 @@ def test_valid_generation_and_allowlisted_download(demo_server: tuple[str, int])
     assert response.getheader("Content-Type") == "application/vnd.recordare.musicxml+xml"
     assert b"score-partwise" in response.read()
     connection.close()
+
+
+def test_accepts_director_instrument_profile_override(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, FIXTURE.read_bytes(), profile_overrides={"P1": "viola"})
+
+    assert status == 200
+    assert payload["analysis"]["parts"][0]["profile_confidence"] == "director-override"
 
 
 def test_evicts_oldest_completed_job(demo_server: tuple[str, int]) -> None:

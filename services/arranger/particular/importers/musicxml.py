@@ -167,8 +167,11 @@ def parse_musicxml(data: bytes) -> Score:
         raise MusicXMLParseError(f"malformed MusicXML: {error}") from error
     if root.tag != "score-partwise":
         raise MusicXMLParseError("only score-partwise MusicXML is supported")
-    names = {
-        item.attrib.get("id", ""): item.findtext("part-name", default="Unnamed part")
+    part_metadata = {
+        item.attrib.get("id", ""): (
+            item.findtext("part-name", default="Unnamed part"),
+            item.findtext("./score-instrument/instrument-name"),
+        )
         for item in root.findall("./part-list/score-part")
     }
     parts: list[Part] = []
@@ -412,10 +415,11 @@ def parse_musicxml(data: bytes) -> Score:
         parts.append(
             Part(
                 id=part_id,
-                name=names.get(part_id, "Unnamed part"),
+                name=part_metadata.get(part_id, ("Unnamed part", None))[0],
                 chromatic_transposition=transpose,
                 measures=tuple(measures),
                 diatonic_transposition=diatonic_transpose,
+                instrument_name=part_metadata.get(part_id, ("Unnamed part", None))[1],
             )
         )
     if not parts:

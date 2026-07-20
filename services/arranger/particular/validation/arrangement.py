@@ -118,7 +118,9 @@ def _validate_pitch_spelling(score: Score, tier_name: str) -> None:
             )
 
 
-def validate_family(source: Score, family: ArrangementFamily) -> None:
+def validate_family(
+    source: Score, family: ArrangementFamily, profile_overrides: dict[str, str] | None = None
+) -> None:
     if [tier.name for tier in family.tiers] != EXPECTED_TIERS:
         raise ArrangementValidationError(
             "tier family must contain Foundation, Core, and Challenge in order"
@@ -143,7 +145,7 @@ def validate_family(source: Score, family: ArrangementFamily) -> None:
         _validate_ties(tier.score, tier.name)
         count = 0
         for part in tier.score.parts:
-            minimum, maximum = instrument_range(part)
+            minimum, maximum = instrument_range(part, (profile_overrides or {}).get(part.id))
             for measure in part.measures:
                 for event in measure.events:
                     if event.kind == "note" and event.written_pitch is not None:

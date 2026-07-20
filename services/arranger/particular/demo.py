@@ -72,6 +72,21 @@ class DemoHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _profile_overrides(self) -> dict[str, str]:
+        raw_overrides = self.headers.get("X-Particular-Instrument-Profiles")
+        if raw_overrides is None:
+            return {}
+        try:
+            overrides = json.loads(raw_overrides)
+        except json.JSONDecodeError as error:
+            raise ValueError("instrument profile overrides must be JSON") from error
+        if not isinstance(overrides, dict) or not all(
+            isinstance(part_id, str) and isinstance(profile_id, str)
+            for part_id, profile_id in overrides.items()
+        ):
+            raise ValueError("instrument profile overrides must map part IDs to profile IDs")
+        return overrides
+
     def do_POST(self) -> None:
         if urlsplit(self.path).path != "/api/generate":
             self._json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
@@ -108,7 +123,7 @@ class DemoHandler(BaseHTTPRequestHandler):
             source = job_root / f"source{Path(filename).suffix.casefold()}"
             source.write_bytes(contents)
             output = job_root / "artifacts"
-            generate_to_directory(source, output)
+            generate_to_directory(source, output, self._profile_overrides())
             manifest = json.loads((output / ARTIFACTS["manifest"]).read_text())
             analysis = json.loads((output / ARTIFACTS["analysis"]).read_text())
         except (OSError, ValueError) as error:

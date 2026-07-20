@@ -104,14 +104,17 @@ def _tier_explanation(tier: str, target: float, selected: list[Candidate]) -> st
     return f"Unchanged: no safe candidate exceeded the {target:.2f} {tier} target."
 
 
-def generate_arrangement_family(score: Score) -> ArrangementFamily:
+def generate_arrangement_family(
+    score: Score, profile_overrides: dict[str, str] | None = None
+) -> ArrangementFamily:
     """Generate three compatible tiers with deterministic conflict resolution."""
 
     protected = protected_locators(score)
     proposed: list[ScoredCandidate] = []
     policy = tier_policy()
     for part in score.parts:
-        minimum, maximum = instrument_range(part)
+        profile_override = (profile_overrides or {}).get(part.id)
+        minimum, maximum = instrument_range(part, profile_override)
         for measure in part.measures:
             if not measure.events:
                 continue
@@ -120,7 +123,7 @@ def generate_arrangement_family(score: Score) -> ArrangementFamily:
                 adjust_octave_range(measure.events, minimum, maximum, protected),
                 thin_repetitions(measure.events, protected),
             )
-            vector = analyze_part(replace(part, measures=(measure,))).vector
+            vector = analyze_part(replace(part, measures=(measure,)), profile_override).vector
             proposed.extend(
                 ScoredCandidate(
                     candidate,

@@ -68,6 +68,7 @@ class Part:
     chromatic_transposition: int
     measures: tuple[Measure, ...]
     diatonic_transposition: int = 0
+    instrument_name: str | None = None
 
 
 @dataclass(frozen=True)

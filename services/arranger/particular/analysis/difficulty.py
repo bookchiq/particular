@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
+from collections.abc import Mapping
+from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -13,6 +17,26 @@ from particular.domain.score import Part
 PROFILE_ROOT = Path(__file__).parents[1] / "profiles"
 
 
+@dataclass(frozen=True)
+class InstrumentProfile:
+    profile_id: str
+    names: tuple[str, ...]
+    written_range: tuple[int, int]
+
+
+@dataclass(frozen=True)
+class InstrumentProfileDocument:
+    version: int
+    profiles: Mapping[str, InstrumentProfile]
+
+
+@dataclass(frozen=True)
+class ProfileMatch:
+    profile_id: str
+    confidence: str
+    warning: str | None = None
+
+
 @cache
 def _load(name: str) -> dict[str, Any]:
     value = json.loads((PROFILE_ROOT / name).read_text(encoding="utf-8"))
@@ -21,20 +45,96 @@ def _load(name: str) -> dict[str, Any]:
     return value
 
 
-def _profile_for(part: Part, profiles: dict[str, Any]) -> str:
-    normalized = part.name.casefold()
-    for profile_id, profile in profiles.items():
-        if normalized in profile["names"]:
-            return str(profile_id)
-    return "generic"
+def parse_instrument_profiles(value: object) -> InstrumentProfileDocument:
+    """Deserialize and validate the instrument-profile configuration."""
+
+    if not isinstance(value, dict) or not isinstance(value.get("version"), int):
+        raise ValueError("invalid instrument profile document")
+    raw_profiles = value.get("profiles")
+    if not isinstance(raw_profiles, dict) or "generic" not in raw_profiles:
+        raise ValueError("instrument profile document requires a generic profile")
+    profiles: dict[str, InstrumentProfile] = {}
+    aliases: set[str] = set()
+    for profile_id, raw_profile in raw_profiles.items():
+        if not isinstance(profile_id, str) or not isinstance(raw_profile, dict):
+            raise ValueError("invalid instrument profile")
+        names = raw_profile.get("names")
+        written_range = raw_profile.get("written_range")
+        if (
+            not isinstance(names, list)
+            or not all(isinstance(name, str) and name.strip() for name in names)
+            or not isinstance(written_range, list)
+            or len(written_range) != 2
+            or not all(isinstance(pitch, int) for pitch in written_range)
+            or written_range[0] > written_range[1]
+        ):
+            raise ValueError(f"invalid profile {profile_id!r}: names or written_range")
+        normalized_names = {_normalize_instrument_name(name) for name in names}
+        if "" in normalized_names or aliases.intersection(normalized_names):
+            raise ValueError(f"invalid profile {profile_id!r}: duplicate instrument name")
+        aliases.update(normalized_names)
+        profiles[profile_id] = InstrumentProfile(
+            profile_id=profile_id,
+            names=tuple(names),
+            written_range=(written_range[0], written_range[1]),
+        )
+    return InstrumentProfileDocument(version=value["version"], profiles=profiles)
 
 
-def instrument_range(part: Part) -> tuple[int, int]:
+@cache
+def instrument_profiles() -> InstrumentProfileDocument:
+    """Return the validated, versioned instrument profile document."""
+
+    return parse_instrument_profiles(_load("instruments.json"))
+
+
+def _normalize_instrument_name(name: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", name.casefold())
+    unaccented = "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    )
+    normalized = " ".join(re.findall(r"[a-z0-9]+", unaccented))
+    return re.sub(r" (?:[0-9]+|[ivx]+)$", "", normalized)
+
+
+def _profile_for(part: Part, profile_override: str | None = None) -> ProfileMatch:
+    document = instrument_profiles()
+    if profile_override is not None:
+        if profile_override not in document.profiles or profile_override == "generic":
+            raise ValueError(f"unknown instrument profile override: {profile_override}")
+        return ProfileMatch(profile_override, "director-override")
+
+    aliases = {
+        _normalize_instrument_name(name): profile.profile_id
+        for profile in document.profiles.values()
+        for name in profile.names
+    }
+    part_match = aliases.get(_normalize_instrument_name(part.name))
+    declared_match = (
+        aliases.get(_normalize_instrument_name(part.instrument_name))
+        if part.instrument_name
+        else None
+    )
+    if part_match and declared_match and part_match != declared_match:
+        return ProfileMatch(
+            "generic", "ambiguous", "Instrument metadata conflicts; choose an instrument profile."
+        )
+    if declared_match:
+        return ProfileMatch(declared_match, "declared-instrument")
+    if part_match:
+        return ProfileMatch(part_match, "normalized-name")
+    return ProfileMatch(
+        "generic",
+        "unmatched",
+        f"No instrument profile for {part.name!r}; generic constraints applied",
+    )
+
+
+def instrument_range(part: Part, profile_override: str | None = None) -> tuple[int, int]:
     """Return the declared written range for a part's matched profile."""
 
-    document = _load("instruments.json")
-    profile = document["profiles"][_profile_for(part, document["profiles"])]
-    return int(profile["written_range"][0]), int(profile["written_range"][1])
+    profile = instrument_profiles().profiles[_profile_for(part, profile_override).profile_id]
+    return profile.written_range
 
 
 def tier_policy() -> TierPolicy:
@@ -47,12 +147,12 @@ def tier_policy() -> TierPolicy:
     )
 
 
-def analyze_part(part: Part) -> DifficultyAnalysis:
+def analyze_part(part: Part, profile_override: str | None = None) -> DifficultyAnalysis:
     """Compute independent raw features without presenting a universal grade."""
 
-    profile_document = _load("instruments.json")
+    profile_document = instrument_profiles()
     policy = tier_policy()
-    profile_id = _profile_for(part, profile_document["profiles"])
+    profile_match = _profile_for(part, profile_override)
     notes = [event for measure in part.measures for event in measure.events if event.kind == "note"]
     pitches = [event.written_pitch for event in notes if event.written_pitch is not None]
     leaps = [abs(right - left) for left, right in zip(pitches, pitches[1:], strict=False)]
@@ -76,13 +176,10 @@ def analyze_part(part: Part) -> DifficultyAnalysis:
         rhythmic_complexity=max(0.0, 1.0 - shortest) if notes else 0.0,
     )
     return DifficultyAnalysis(
-        profile_id=profile_id,
-        profile_version=int(profile_document["version"]),
+        profile_id=profile_match.profile_id,
+        profile_version=profile_document.version,
+        profile_confidence=profile_match.confidence,
         vector=vector,
         tier_targets=policy.targets,
-        warning=(
-            f"No instrument profile for {part.name!r}; generic constraints applied"
-            if profile_id == "generic"
-            else None
-        ),
+        warning=profile_match.warning,
     )

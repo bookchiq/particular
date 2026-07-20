@@ -20,15 +20,28 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("preflight", "analyze"):
         command = commands.add_parser(name)
         command.add_argument("source", type=Path)
+        if name == "analyze":
+            command.add_argument("--instrument-profile", action="append", default=[])
     generate = commands.add_parser("generate")
     generate.add_argument("source", type=Path)
     generate.add_argument("output", type=Path)
+    generate.add_argument("--instrument-profile", action="append", default=[])
     return parser
 
 
 def _preflight(source: Path) -> dict[str, Any]:
     score, _ = load_score(source)
     return asdict(summarize_preflight(score))
+
+
+def _profile_overrides(values: Sequence[str]) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for value in values:
+        part_id, separator, profile_id = value.partition("=")
+        if not separator or not part_id or not profile_id or part_id in overrides:
+            raise ValueError("instrument profiles must use unique PART_ID=PROFILE_ID values")
+        overrides[part_id] = profile_id
+    return overrides
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -40,9 +53,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             data = _preflight(arguments.source)
         elif arguments.command == "analyze":
             score, _ = load_score(arguments.source)
-            data = analyze_score(score)
+            data = analyze_score(score, _profile_overrides(arguments.instrument_profile))
         else:
-            manifest = generate_to_directory(arguments.source, arguments.output)
+            manifest = generate_to_directory(
+                arguments.source,
+                arguments.output,
+                _profile_overrides(arguments.instrument_profile),
+            )
             data = {
                 "output": str(arguments.output),
                 "source_sha256": manifest["source_sha256"],

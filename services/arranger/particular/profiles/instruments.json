@@ -1,13 +1,29 @@
 {
-  "version": 1,
+  "version": 2,
   "profiles": {
     "violin": {
-      "names": ["violin", "violin i", "violin ii"],
+      "names": ["violin", "vln", "violino", "violine", "violon"],
       "written_range": [55, 103]
     },
-    "viola": { "names": ["viola"], "written_range": [48, 88] },
-    "cello": { "names": ["cello", "violoncello"], "written_range": [36, 76] },
-    "flute": { "names": ["flute"], "written_range": [60, 96] },
+    "viola": {
+      "names": ["viola", "vla", "bratsche"],
+      "written_range": [48, 88]
+    },
+    "cello": {
+      "names": [
+        "cello",
+        "violoncello",
+        "violoncelle",
+        "violoncell",
+        "vc",
+        "vlc"
+      ],
+      "written_range": [36, 76]
+    },
+    "flute": {
+      "names": ["flute", "flauto", "flote", "floete", "fl"],
+      "written_range": [60, 96]
+    },
     "b-flat-clarinet": {
       "names": ["clarinet in b-flat", "b-flat clarinet"],
       "written_range": [50, 94]
