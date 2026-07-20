@@ -49,3 +49,88 @@ def test_enforces_entry_count_size_and_compression_limits() -> None:
     compressed = _archive({"score.xml": b"0" * 4096}, zipfile.ZIP_DEFLATED)
     with pytest.raises(UnsafeScoreError, match="compression"):
         extract_mxl(compressed, ArchiveLimits(max_compression_ratio=2))
+
+
+MUSICXML_MEDIA = "application/vnd.recordare.musicxml+xml"
+
+
+def _container(*rootfiles: tuple[str, str | None]) -> bytes:
+    declared = "".join(
+        f'<rootfile full-path="{path}"'
+        + (f' media-type="{media}"' if media is not None else "")
+        + "/>"
+        for path, media in rootfiles
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+        f"<rootfiles>{declared}</rootfiles></container>"
+    ).encode()
+
+
+def test_resolves_rootfile_and_ignores_auxiliary_xml() -> None:
+    archive = _archive(
+        {
+            "META-INF/container.xml": _container(("score.musicxml", MUSICXML_MEDIA)),
+            "score.musicxml": b"<score-partwise/>",
+            "extra.xml": b"<metadata/>",
+        }
+    )
+    assert extract_mxl(archive) == b"<score-partwise/>"
+
+
+def test_resolves_rootfile_without_media_type_by_suffix() -> None:
+    archive = _archive(
+        {
+            "META-INF/container.xml": _container(("score.musicxml", None)),
+            "score.musicxml": b"<score-partwise/>",
+        }
+    )
+    assert extract_mxl(archive) == b"<score-partwise/>"
+
+
+def test_rejects_missing_rootfile_member() -> None:
+    archive = _archive(
+        {
+            "META-INF/container.xml": _container(("missing.musicxml", MUSICXML_MEDIA)),
+            "other.musicxml": b"<score-partwise/>",
+        }
+    )
+    with pytest.raises(UnsafeScoreError, match="rootfile is missing"):
+        extract_mxl(archive)
+
+
+def test_rejects_duplicate_musicxml_rootfiles() -> None:
+    archive = _archive(
+        {
+            "META-INF/container.xml": _container(
+                ("a.musicxml", MUSICXML_MEDIA), ("b.musicxml", MUSICXML_MEDIA)
+            ),
+            "a.musicxml": b"<score-partwise/>",
+            "b.musicxml": b"<score-partwise/>",
+        }
+    )
+    with pytest.raises(UnsafeScoreError, match="exactly one"):
+        extract_mxl(archive)
+
+
+def test_rejects_rootfile_path_traversal() -> None:
+    archive = _archive(
+        {
+            "META-INF/container.xml": _container(("../evil.musicxml", MUSICXML_MEDIA)),
+            "score.musicxml": b"<score-partwise/>",
+        }
+    )
+    with pytest.raises(UnsafeScoreError, match="unsafe"):
+        extract_mxl(archive)
+
+
+def test_rejects_unsupported_rootfile_media_type() -> None:
+    archive = _archive(
+        {
+            "META-INF/container.xml": _container(("cover.png", "image/png")),
+            "score.musicxml": b"<score-partwise/>",
+        }
+    )
+    with pytest.raises(UnsafeScoreError, match="rootfile"):
+        extract_mxl(archive)
