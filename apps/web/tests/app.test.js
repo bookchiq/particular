@@ -210,6 +210,72 @@ describe("director review UI", () => {
     expect(tabs[1].getAttribute("aria-selected")).toBe("true");
   });
 
+  it("uses roving tabindex and links every tab to the ledger tabpanel", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    const tabs = [...document.querySelectorAll('#tier-tabs [role="tab"]')];
+    expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1]);
+    expect(
+      tabs.every((tab) => tab.getAttribute("aria-controls") === "changes"),
+    ).toBe(true);
+
+    const panel = document.querySelector("#changes");
+    expect(panel.getAttribute("role")).toBe("tabpanel");
+    expect(panel.getAttribute("aria-labelledby")).toBe("tier-tab-Foundation");
+  });
+
+  it("navigates tiers with Arrow, Home, and End keys", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    const tablist = document.querySelector("#tier-tabs");
+    const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+    const press = (key) =>
+      tablist.dispatchEvent(
+        new KeyboardEvent("keydown", { key, bubbles: true }),
+      );
+
+    press("ArrowRight");
+    expect(tabs[1].getAttribute("aria-selected")).toBe("true");
+    expect(tabs[1].tabIndex).toBe(0);
+    expect(document.activeElement).toBe(tabs[1]);
+    expect(
+      document.querySelector("#changes").getAttribute("aria-labelledby"),
+    ).toBe("tier-tab-Core");
+
+    press("End");
+    expect(tabs[2].getAttribute("aria-selected")).toBe("true");
+    press("Home");
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+    press("ArrowLeft");
+    expect(tabs[2].getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("moves focus to the results heading after generation", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    expect(document.activeElement).toBe(
+      document.querySelector("#results-title"),
+    );
+  });
+
   it("escapes HTML in score-derived text", async () => {
     installFetch([
       jsonResponse(
