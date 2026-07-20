@@ -123,6 +123,19 @@ input[type="file"] {
   border: 1px solid #9aa69e;
   background: white;
 }
+.rights {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.rights legend {
+  font-weight: 750;
+  padding: 0;
+  margin-bottom: 0.6rem;
+}
+.rights .check {
+  margin-top: 0.5rem;
+}
 .check {
   display: flex;
   gap: 0.7rem;

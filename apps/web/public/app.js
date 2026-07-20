@@ -30,8 +30,8 @@ showLimits();
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const file = document.querySelector("#score-file").files[0];
-  const attested = document.querySelector("#rights-attestation").checked;
-  if (!file || !attested) return;
+  const basis = form.querySelector('input[name="rights-basis"]:checked');
+  if (!file || !basis) return;
   statusLine.textContent = "Listening closely… building coordinated parts.";
   // A new attempt invalidates any previously shown arrangement until it succeeds.
   results.hidden = true;
@@ -41,7 +41,7 @@ form.addEventListener("submit", async (event) => {
       method: "POST",
       headers: {
         "X-Particular-Filename": file.name,
-        "X-Particular-Rights-Attested": "true",
+        "X-Particular-Rights-Basis": basis.value,
         "X-Particular-Instrument-Profiles": JSON.stringify(profileOverrides),
         "Content-Type": "application/octet-stream",
       },

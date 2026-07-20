@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlsplit
 
-from particular.application import ARTIFACT_FILENAMES, generate_to_directory
+from particular.application import ARTIFACT_FILENAMES, RIGHTS_BASES, generate_to_directory
 from particular.errors import classify_error
 from particular.importers.musicxml import MAX_EVENTS, MAX_PARTS
 from particular.importers.security import DEFAULT_ARCHIVE_LIMITS
@@ -136,7 +136,8 @@ class DemoHandler(BaseHTTPRequestHandler):
         if urlsplit(self.path).path != "/api/generate":
             self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
-        if self.headers.get("X-Particular-Rights-Attested") != "true":
+        rights_basis = self.headers.get("X-Particular-Rights-Basis")
+        if rights_basis not in RIGHTS_BASES:
             self._error(HTTPStatus.FORBIDDEN, "rights_attestation_required")
             return
         filename = self.headers.get("X-Particular-Filename", "")
@@ -168,8 +169,10 @@ class DemoHandler(BaseHTTPRequestHandler):
             source = job_root / f"source{Path(filename).suffix.casefold()}"
             source.write_bytes(contents)
             output = job_root / "artifacts"
-            # The uploader passed the rights-attestation gate above.
-            generate_to_directory(source, output, self._profile_overrides(), attested=True)
+            # The uploader selected a valid rights basis at the gate above.
+            generate_to_directory(
+                source, output, self._profile_overrides(), rights_basis=rights_basis
+            )
             manifest = json.loads((output / ARTIFACTS["manifest"]).read_text())
             analysis = json.loads((output / ARTIFACTS["analysis"]).read_text())
         except (OSError, ValueError) as error:

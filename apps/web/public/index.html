@@ -39,13 +39,34 @@
             </div>
           </div>
           <div class="step">
-            <span>02</span
-            ><label class="check"
-              ><input id="rights-attestation" type="checkbox" required /><span
-                >I confirm that I’m authorized to upload and create adaptations
-                of this score.</span
-              ></label
-            >
+            <span>02</span>
+            <fieldset class="rights">
+              <legend>I’m authorized to adapt this score because it is:</legend>
+              <label class="check"
+                ><input
+                  type="radio"
+                  name="rights-basis"
+                  value="original"
+                  required
+                /><span>my original work</span></label
+              >
+              <label class="check"
+                ><input
+                  type="radio"
+                  name="rights-basis"
+                  value="public_domain"
+                /><span>in the public domain</span></label
+              >
+              <label class="check"
+                ><input
+                  type="radio"
+                  name="rights-basis"
+                  value="authorized"
+                /><span
+                  >licensed, or I have the rightsholder’s permission</span
+                ></label
+              >
+            </fieldset>
           </div>
           <button type="submit">
             Create particular parts <span aria-hidden="true">→</span>

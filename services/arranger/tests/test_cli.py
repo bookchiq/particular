@@ -45,7 +45,7 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
     assert isinstance(foundation["noops"]["by_operator"], dict)
     assert len(manifest["reproducibility_digest"]) == 64
     assert manifest["reproducibility"]["engine_version"] == manifest["engine_version"]
-    assert manifest["operational"]["rights_attested"] is False
+    assert manifest["operational"]["attestation"] is None
     assert manifest["part_profiles"][0] == {
         "part_id": "P1",
         "profile_id": "violin",
@@ -57,10 +57,17 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
 def test_generate_records_rights_attestation(tmp_path: Path) -> None:
     output = tmp_path / "attested"
 
-    assert main(["generate", str(FIXTURE), str(output), "--attest"]) == 0
+    assert main(["generate", str(FIXTURE), str(output), "--rights-basis", "public_domain"]) == 0
 
     manifest = json.loads((output / "manifest.json").read_text())
-    assert manifest["operational"]["rights_attested"] is True
+    assert manifest["operational"]["attestation"]["basis"] == "public_domain"
+
+
+def test_unknown_rights_basis_is_a_structured_argument_error(capsys: object) -> None:
+    assert main(["generate", str(FIXTURE), "out", "--rights-basis", "nope"]) == 2
+
+    error = json.loads(capsys.readouterr().err)  # type: ignore[attr-defined]
+    assert error["error"]["code"] == "invalid_arguments"
 
 
 def test_preflight_and_analyze_emit_structured_json(capsys: object) -> None:

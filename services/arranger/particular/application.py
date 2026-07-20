@@ -36,6 +36,23 @@ ENGINE_VERSION = _engine_version()
 NORMALIZED_SCHEMA_VERSION = 1
 # Cap on listed meaningful rejections per tier; the total is always reported.
 MAX_REJECTED_PER_TIER = 50
+# Rights bases an uploader may attest to, and the attestation record version.
+ATTESTATION_SCHEMA_VERSION = 1
+RIGHTS_BASES = ("original", "public_domain", "authorized")
+
+
+def _build_attestation(rights_basis: str | None, attested_at: str | None) -> dict[str, Any] | None:
+    """Return a versioned attestation record, or None when no basis is asserted."""
+
+    if rights_basis is None:
+        return None
+    if rights_basis not in RIGHTS_BASES:
+        raise ValueError(f"unknown rights basis: {rights_basis}")
+    return {
+        "schema_version": ATTESTATION_SCHEMA_VERSION,
+        "basis": rights_basis,
+        "attested_at": attested_at,
+    }
 
 
 def _summarize_changes(changes: Any) -> dict[str, Any]:
@@ -127,7 +144,7 @@ def generation_manifest(
     source_checksum: str,
     source: Score,
     profile_overrides: dict[str, str] | None = None,
-    attested: bool = False,
+    rights_basis: str | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """Build the stable, content-minimized generation audit record.
@@ -167,7 +184,7 @@ def generation_manifest(
         "operational": {
             "engine_build": os.environ.get("PARTICULAR_BUILD", "development"),
             "generated_at": generated_at,
-            "rights_attested": bool(attested),
+            "attestation": _build_attestation(rights_basis, generated_at),
         },
         "part_profiles": [
             {
@@ -196,7 +213,7 @@ def generate_to_directory(
     source_path: Path,
     output_path: Path,
     profile_overrides: dict[str, str] | None = None,
-    attested: bool = False,
+    rights_basis: str | None = None,
 ) -> dict[str, Any]:
     """Generate and atomically publish a complete arrangement directory."""
 
@@ -209,7 +226,7 @@ def generate_to_directory(
     analysis = analyze_score(score, overrides)
     generated_at = datetime.now(UTC).isoformat()
     manifest = generation_manifest(
-        family, checksum, score, overrides, attested=attested, generated_at=generated_at
+        family, checksum, score, overrides, rights_basis=rights_basis, generated_at=generated_at
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output_path.name}-", dir=output_path.parent))
