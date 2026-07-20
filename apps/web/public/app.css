@@ -207,6 +207,60 @@ input:focus-visible {
   font-weight: 700;
   color: var(--muted);
 }
+.score-map-panel {
+  margin-bottom: 1.5rem;
+}
+.score-map-hint {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.score-map-part {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.35rem 0;
+}
+.score-map-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.measure-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.measure {
+  width: auto;
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  min-width: 2rem;
+  border: 1px solid #ccd3ce;
+  background: #edf3ee;
+  color: var(--ink);
+  box-shadow: none;
+  font: 600 0.78rem inherit;
+}
+.measure.changed {
+  background: var(--lime);
+  border-color: var(--line);
+}
+.measure.declined {
+  background: #fff2cd;
+  border-color: #806318;
+}
+#score-map-detail:not(:empty) {
+  margin-top: 1rem;
+  border-top: 1px solid #ccd3ce;
+  padding-top: 0.8rem;
+}
+@media (max-width: 760px) {
+  .score-map-part {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+}
 .tier-tabs {
   display: flex;
   gap: 0.5rem;

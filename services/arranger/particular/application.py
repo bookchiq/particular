@@ -132,6 +132,7 @@ def analyze_score(score: Score, profile_overrides: dict[str, str] | None = None)
             {
                 "part_id": part.id,
                 "part_name": part.name,
+                "measures": [measure.number for measure in part.measures],
                 **asdict(analyze_part(part, overrides.get(part.id))),
             }
             for part in score.parts
