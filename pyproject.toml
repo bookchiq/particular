@@ -20,6 +20,11 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["services/arranger/particular"]
 
+# Ship the loopback demo's browser assets inside the package so the installed
+# wheel can serve them via importlib.resources (see demo._load_asset).
+[tool.hatch.build.targets.wheel.force-include]
+"apps/web/public" = "particular/web"
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100

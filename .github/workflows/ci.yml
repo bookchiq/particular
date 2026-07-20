@@ -47,3 +47,21 @@ jobs:
         run: uv run python -m evaluation.scripts.validate_corpus
       - name: Human usefulness
         run: uv run python -m evaluation.scripts.validate_corpus --mode usefulness
+
+  packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install uv==0.10.2
+      - name: Build wheel
+        run: uv build --wheel
+      - name: Install wheel in a clean environment
+        run: |
+          python -m venv "$RUNNER_TEMP/wheelenv"
+          "$RUNNER_TEMP/wheelenv/bin/pip" install dist/*.whl
+      - name: Smoke-test the installed artifact
+        run: |
+          "$RUNNER_TEMP/wheelenv/bin/python" infrastructure/wheel_smoke.py
