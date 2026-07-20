@@ -5,13 +5,30 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 class CorpusValidationError(ValueError):
     """Raised when corpus metadata or content violates the corpus contract."""
+
+
+# A pilot score's musical usefulness may only be claimed once at least this many
+# qualified reviewers rate it, each at or above the usefulness rating, without a
+# blocking disagreement between them.
+QUALIFIED_ROLES = {"director", "teacher", "arranger", "specialist"}
+MIN_QUALIFIED_REVIEWS = 2
+USEFULNESS_MIN_RATING = 3  # "usable with minor edits" or better, on a 1-5 scale.
+DISAGREEMENT_SPREAD = 2  # A gap this wide on any dimension blocks a usefulness claim.
+RATING_DIMENSIONS = (
+    "playability",
+    "fidelity",
+    "meaningfulness",
+    "notation_quality",
+    "rehearsal_usefulness",
+)
 
 
 @dataclass(frozen=True)
@@ -168,9 +185,143 @@ def validate_corpus(
     return sorted(inventory, key=lambda item: item.id)
 
 
+@dataclass(frozen=True)
+class UsefulnessReport:
+    """Whether human evaluation supports claiming musical usefulness yet."""
+
+    reviewed: tuple[str, ...]
+    sufficiently_reviewed: tuple[str, ...]
+    validated: tuple[str, ...]
+    disagreements: tuple[str, ...]
+    usefulness_established: bool
+
+
+def _resolve_ref(ref: str, root: dict[str, Any]) -> dict[str, Any]:
+    node: Any = root
+    for part in ref.lstrip("#/").split("/"):
+        node = node[part]
+    return cast(dict[str, Any], node)
+
+
+def _schema_errors(
+    value: Any, schema: dict[str, Any], root: dict[str, Any], path: str
+) -> list[str]:
+    """Validate a value against the subset of JSON Schema the review schema uses."""
+
+    if "$ref" in schema:
+        schema = _resolve_ref(schema["$ref"], root)
+    if "enum" in schema and value not in schema["enum"]:
+        return [f"{path or 'value'}: not one of {schema['enum']}"]
+    if "const" in schema and value != schema["const"]:
+        return [f"{path or 'value'}: must equal {schema['const']!r}"]
+    kind = schema.get("type")
+    errors: list[str] = []
+    if kind == "object":
+        if not isinstance(value, dict):
+            return [f"{path or 'value'}: expected object"]
+        properties = schema.get("properties", {})
+        for field in schema.get("required", []):
+            if field not in value:
+                errors.append(f"{path}/{field}: required")
+        if schema.get("additionalProperties") is False:
+            errors += [
+                f"{path}/{key}: unexpected property" for key in value if key not in properties
+            ]
+        for key, subschema in properties.items():
+            if key in value:
+                errors += _schema_errors(value[key], subschema, root, f"{path}/{key}")
+    elif kind == "array":
+        if not isinstance(value, list):
+            return [f"{path or 'value'}: expected array"]
+        item_schema = schema.get("items")
+        if item_schema is not None:
+            for index, item in enumerate(value):
+                errors += _schema_errors(item, item_schema, root, f"{path}[{index}]")
+    elif kind == "integer":
+        if not isinstance(value, int) or isinstance(value, bool):
+            return [f"{path or 'value'}: expected integer"]
+        if "minimum" in schema and value < schema["minimum"]:
+            errors.append(f"{path}: below minimum {schema['minimum']}")
+        if "maximum" in schema and value > schema["maximum"]:
+            errors.append(f"{path}: above maximum {schema['maximum']}")
+    elif kind == "string":
+        if not isinstance(value, str):
+            return [f"{path or 'value'}: expected string"]
+        if "minLength" in schema and len(value) < schema["minLength"]:
+            errors.append(f"{path}: shorter than {schema['minLength']}")
+    elif kind == "boolean" and not isinstance(value, bool):
+        errors.append(f"{path or 'value'}: expected boolean")
+    return errors
+
+
+def validate_review_document(document: Any, schema: dict[str, Any]) -> None:
+    """Raise if a review document does not conform to the review schema."""
+
+    errors = _schema_errors(document, schema, schema, "")
+    if errors:
+        raise CorpusValidationError("; ".join(errors))
+
+
+def evaluate_reviews(reviews_dir: Path, review_schema_path: Path) -> UsefulnessReport:
+    """Evaluate collected reviews against the usefulness gate.
+
+    Reviews live as schema-conforming JSON documents. Usefulness for a pilot
+    score is only established with enough qualified reviews, all at or above the
+    usefulness rating, and without a blocking disagreement. With no reviews the
+    gate honestly reports that usefulness is not yet established.
+    """
+
+    schema = _load_json(review_schema_path, "review schema")
+    by_fixture: dict[str, list[dict[str, Any]]] = {}
+    review_paths = sorted(reviews_dir.glob("*.json")) if reviews_dir.is_dir() else []
+    for review_path in review_paths:
+        document = _load_json(review_path, f"review {review_path.name}")
+        try:
+            validate_review_document(document, schema)
+        except CorpusValidationError as error:
+            raise CorpusValidationError(f"{review_path.name}: {error}") from error
+        by_fixture.setdefault(str(document["fixture_id"]), []).append(document)
+
+    sufficiently: list[str] = []
+    validated: list[str] = []
+    disagreements: list[str] = []
+    for fixture_id, reviews in sorted(by_fixture.items()):
+        qualified = [
+            review
+            for review in reviews
+            if review["evaluator"]["role"] in QUALIFIED_ROLES
+            and review["evaluator"]["consent_confirmed"] is True
+        ]
+        if len(qualified) < MIN_QUALIFIED_REVIEWS:
+            continue
+        sufficiently.append(fixture_id)
+        verdicts = [
+            review["score_review"]["rehearsal_usefulness"] >= USEFULNESS_MIN_RATING
+            for review in qualified
+        ]
+        spread = max(
+            max(review["score_review"][dimension] for review in qualified)
+            - min(review["score_review"][dimension] for review in qualified)
+            for dimension in RATING_DIMENSIONS
+        )
+        disagrees = (any(verdicts) and not all(verdicts)) or spread >= DISAGREEMENT_SPREAD
+        if disagrees:
+            disagreements.append(fixture_id)
+        elif all(verdicts):
+            validated.append(fixture_id)
+    return UsefulnessReport(
+        reviewed=tuple(sorted(by_fixture)),
+        sufficiently_reviewed=tuple(sufficiently),
+        validated=tuple(validated),
+        disagreements=tuple(disagreements),
+        usefulness_established=bool(validated),
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument("--mode", choices=("integrity", "usefulness"), default="integrity")
     parser.add_argument("--feature")
     parser.add_argument("--family")
     parser.add_argument("--expected-result", choices=sorted(ALLOWED_RESULTS))
@@ -178,15 +329,35 @@ def main() -> int:
     root = arguments.root.resolve()
     manifest = root / "evaluation/corpus/manifest.yaml"
     schema = root / "evaluation/rubrics/review.schema.json"
-    validate_corpus(root, manifest, schema)
-    selected = select_entries(
-        load_manifest(manifest),
-        feature=arguments.feature,
-        family=arguments.family,
-        expected_result=arguments.expected_result,
-    )
-    print(json.dumps({"count": len(selected), "fixtures": [item["id"] for item in selected]}))
-    return 0
+    try:
+        if arguments.mode == "usefulness":
+            report = evaluate_reviews(root / "evaluation/results/reviews", schema)
+            print(
+                json.dumps(
+                    {
+                        "outcome": "human-usefulness",
+                        "usefulness_established": report.usefulness_established,
+                        "reviewed": list(report.reviewed),
+                        "sufficiently_reviewed": list(report.sufficiently_reviewed),
+                        "validated": list(report.validated),
+                        "disagreements": list(report.disagreements),
+                        "min_qualified_reviews": MIN_QUALIFIED_REVIEWS,
+                    }
+                )
+            )
+            return 0
+        validate_corpus(root, manifest, schema)
+        selected = select_entries(
+            load_manifest(manifest),
+            feature=arguments.feature,
+            family=arguments.family,
+            expected_result=arguments.expected_result,
+        )
+        print(json.dumps({"count": len(selected), "fixtures": [item["id"] for item in selected]}))
+        return 0
+    except CorpusValidationError as error:
+        print(json.dumps({"outcome": arguments.mode, "error": str(error)}), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
