@@ -14,7 +14,17 @@ from particular.domain.score import (
     Score,
     SourceLocator,
 )
-from particular.importers.security import UnsafeScoreError, validate_xml_bytes
+from particular.importers.security import (
+    ScoreComplexityError,
+    UnsafeScoreError,
+    validate_xml_bytes,
+)
+
+# Parser resource guards: a full orchestral movement is well within these
+# (~30 parts, ~120k events), so they bound pathological inputs without
+# rejecting real ensemble scores.
+MAX_PARTS = 64
+MAX_EVENTS = 500_000
 
 
 class MusicXMLParseError(ValueError):
@@ -426,6 +436,11 @@ def parse_musicxml(data: bytes) -> Score:
         )
     if not parts:
         raise MusicXMLParseError("score contains no parts")
+    total_events = sum(len(measure.events) for part in parts for measure in part.measures)
+    if len(parts) > MAX_PARTS or total_events > MAX_EVENTS:
+        raise ScoreComplexityError(
+            f"score exceeds complexity limits ({len(parts)} parts, {total_events} events)"
+        )
     return Score(
         version=root.attrib.get("version", "4.0"),
         title=root.findtext("./work/work-title", default="Untitled"),

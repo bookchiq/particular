@@ -14,6 +14,19 @@ const labels = {
   rhythmic_complexity: "Rhythm complexity",
 };
 
+async function showLimits() {
+  const el = document.querySelector("#upload-limits");
+  if (!el) return;
+  try {
+    const limits = await (await fetch("/api/limits")).json();
+    const mb = (bytes) => Math.round(bytes / 1_000_000);
+    el.textContent = `.musicxml, .xml, or .mxl · up to ${mb(limits.max_upload_bytes)} MB (expands to ${mb(limits.max_expanded_total_bytes)} MB, ${limits.max_parts} parts)`;
+  } catch {
+    // Keep the static hint if the limits endpoint is unavailable.
+  }
+}
+showLimits();
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const file = document.querySelector("#score-file").files[0];

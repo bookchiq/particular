@@ -6,6 +6,8 @@ import zipfile
 import pytest
 from particular.importers.security import (
     ArchiveLimits,
+    ScoreCompressionError,
+    ScoreSizeError,
     UnsafeScoreError,
     extract_mxl,
     validate_xml_bytes,
@@ -41,13 +43,13 @@ def test_rejects_path_traversal_and_nested_archives() -> None:
         extract_mxl(_archive({"nested.zip": b"zip"}))
 
 
-def test_enforces_entry_count_size_and_compression_limits() -> None:
-    with pytest.raises(UnsafeScoreError, match="entries"):
+def test_size_and_ratio_limits_are_distinct_categories() -> None:
+    with pytest.raises(ScoreSizeError, match="entries"):
         extract_mxl(_archive({"a.xml": b"a", "b.xml": b"b"}), ArchiveLimits(max_files=1))
-    with pytest.raises(UnsafeScoreError, match="size"):
+    with pytest.raises(ScoreSizeError, match="size"):
         extract_mxl(_archive({"score.xml": b"12345"}), ArchiveLimits(max_entry_bytes=4))
     compressed = _archive({"score.xml": b"0" * 4096}, zipfile.ZIP_DEFLATED)
-    with pytest.raises(UnsafeScoreError, match="compression"):
+    with pytest.raises(ScoreCompressionError, match="compression"):
         extract_mxl(compressed, ArchiveLimits(max_compression_ratio=2))
 
 
@@ -123,6 +125,26 @@ def test_rejects_rootfile_path_traversal() -> None:
     )
     with pytest.raises(UnsafeScoreError, match="unsafe"):
         extract_mxl(archive)
+
+
+def test_calibrated_limits_accept_a_multi_megabyte_score() -> None:
+    # An OpenScore Brandenburg movement expands to ~4.7 MB — over the old 4 MB
+    # per-entry cap. A large XML comment stands in for that legitimate bulk.
+    score_xml = (
+        b"<score-partwise><!--" + b"x" * 4_700_000 + b"-->"
+        b"<part-list><score-part id='P1'><part-name>Violin</part-name></score-part></part-list>"
+        b"<part id='P1'><measure number='1'><attributes><divisions>1</divisions></attributes>"
+        b"<note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration></note>"
+        b"</measure></part></score-partwise>"
+    )
+    archive = _archive(
+        {
+            "META-INF/container.xml": _container(("score.musicxml", MUSICXML_MEDIA)),
+            "score.musicxml": score_xml,
+        }
+    )
+
+    assert b"score-partwise" in extract_mxl(archive)
 
 
 def test_rejects_unsupported_rootfile_media_type() -> None:
