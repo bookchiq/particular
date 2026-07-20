@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib import resources
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlsplit
@@ -55,9 +56,19 @@ PUBLIC_LIMITS = {
     "max_parts": MAX_PARTS,
     "max_events": MAX_EVENTS,
 }
-REPOSITORY_ROOT = Path(__file__).parents[3]
-PUBLIC_ROOT = REPOSITORY_ROOT / "apps/web/public"
 ARTIFACTS = ARTIFACT_FILENAMES
+
+
+def _load_asset(filename: str) -> bytes:
+    """Read a browser asset from the installed package, or the source tree in dev."""
+
+    packaged = resources.files("particular").joinpath("web", filename)
+    if packaged.is_file():
+        return packaged.read_bytes()
+    source = Path(__file__).parents[3] / "apps/web/public" / filename
+    return source.read_bytes()
+
+
 STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/app.css": ("app.css", "text/css; charset=utf-8"),
@@ -276,7 +287,7 @@ class DemoHandler(BaseHTTPRequestHandler):
             return
         if path in STATIC_FILES:
             filename, content_type = STATIC_FILES[path]
-            body = (PUBLIC_ROOT / filename).read_bytes()
+            body = _load_asset(filename)
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
