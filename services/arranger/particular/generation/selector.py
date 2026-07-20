@@ -33,9 +33,13 @@ class ManifestChange:
     part_id: str
     measure: str
     operator: str
+    operator_version: int
     status: str
     explanation: str
     rejection_reason: str | None
+    difficulty_delta: dict[str, float]
+    role_effects: tuple[str, ...]
+    locators: tuple[SourceLocator, ...]
 
 
 @dataclass(frozen=True)
@@ -175,14 +179,18 @@ def generate_arrangement_family(
                 )
             changes.append(
                 ManifestChange(
-                    tier,
-                    candidate.id,
-                    candidate.locators[0].part_id,
-                    candidate.locators[0].measure_number,
-                    candidate.operator,
-                    status,
-                    candidate.explanation,
-                    reason,
+                    tier=tier,
+                    candidate_id=candidate.id,
+                    part_id=candidate.locators[0].part_id,
+                    measure=candidate.locators[0].measure_number,
+                    operator=candidate.operator,
+                    operator_version=candidate.version,
+                    status=status,
+                    explanation=candidate.explanation,
+                    rejection_reason=reason,
+                    difficulty_delta=candidate.difficulty_delta,
+                    role_effects=candidate.role_effects,
+                    locators=candidate.locators,
                 )
             )
         tiers.append(

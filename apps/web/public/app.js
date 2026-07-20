@@ -97,6 +97,35 @@ function render() {
     .join("");
 }
 
+const deltaLabels = {
+  note_density: "Note density",
+  rhythmic_complexity: "Rhythm complexity",
+  range: "Range",
+};
+
+function formatDelta(value) {
+  const rounded = Math.round(value * 100) / 100;
+  return rounded > 0 ? `+${rounded}` : String(rounded);
+}
+
+function renderDeltas(delta) {
+  const entries = Object.entries(delta || {});
+  if (!entries.length) return "";
+  return `<dl class="deltas" aria-label="Difficulty dimensions changed">${entries
+    .map(
+      ([key, value]) =>
+        `<div><dt>${escapeHtml(deltaLabels[key] || key)}</dt><dd>${escapeHtml(formatDelta(value))}</dd></div>`,
+    )
+    .join("")}</dl>`;
+}
+
+function renderRoleEffects(roleEffects) {
+  if (!roleEffects || !roleEffects.length) return "";
+  return `<ul class="role-effects" aria-label="Musical roles preserved">${roleEffects
+    .map((effect) => `<li>${escapeHtml(effect)}</li>`)
+    .join("")}</ul>`;
+}
+
 function renderChanges(tier) {
   const changes = payload.manifest.changes.filter(
     (change) => change.tier === tier,
@@ -105,7 +134,7 @@ function renderChanges(tier) {
     changes
       .map(
         (change) =>
-          `<article class="change"><span class="badge ${change.status}">${change.status === "accepted" ? "Accepted change" : "Not applied"}</span><p><strong>${escapeHtml(change.part_id)}, measure ${escapeHtml(change.measure)}</strong></p><p>${escapeHtml(change.explanation)}</p>${change.rejection_reason ? `<small>Reason: ${escapeHtml(change.rejection_reason)}</small>` : ""}</article>`,
+          `<article class="change"><span class="badge ${change.status}">${change.status === "accepted" ? "Accepted change" : "Not applied"}</span><p><strong>${escapeHtml(change.part_id)}, measure ${escapeHtml(change.measure)}</strong> · ${escapeHtml(change.operator)} v${escapeHtml(change.operator_version)}</p><p>${escapeHtml(change.explanation)}</p>${renderDeltas(change.difficulty_delta)}${renderRoleEffects(change.role_effects)}${change.rejection_reason ? `<small>Reason: ${escapeHtml(change.rejection_reason)}</small>` : ""}</article>`,
       )
       .join("") || "<p>No changes proposed for this tier.</p>";
 }
