@@ -34,6 +34,38 @@ def _engine_version() -> str:
 ENGINE_VERSION = _engine_version()
 # Version of the normalized-score representation the engine analyzes and exports.
 NORMALIZED_SCHEMA_VERSION = 1
+# Cap on listed meaningful rejections per tier; the total is always reported.
+MAX_REJECTED_PER_TIER = 50
+
+
+def _summarize_changes(changes: Any) -> dict[str, Any]:
+    """Group ledger records per tier into accepted, meaningful rejections, and
+    aggregated no-op statistics, keeping the summary bounded regardless of scale."""
+
+    summary: dict[str, dict[str, Any]] = {}
+    for change in changes:
+        tier = summary.setdefault(
+            change.tier,
+            {
+                "accepted": [],
+                "rejected": [],
+                "rejected_total": 0,
+                "noops": {"count": 0, "by_operator": {}},
+            },
+        )
+        if change.status == "accepted":
+            tier["accepted"].append(asdict(change))
+        elif change.applicable:
+            tier["rejected_total"] += 1
+            if len(tier["rejected"]) < MAX_REJECTED_PER_TIER:
+                tier["rejected"].append(asdict(change))
+        else:
+            noops = tier["noops"]
+            noops["count"] += 1
+            noops["by_operator"][change.operator] = noops["by_operator"].get(change.operator, 0) + 1
+    return summary
+
+
 ARTIFACT_FILENAMES = {
     "original": "original-normalized.musicxml",
     "foundation": "foundation.musicxml",
@@ -106,7 +138,6 @@ def generation_manifest(
     """
 
     overrides = _validate_profile_overrides(source, profile_overrides)
-    changes = [asdict(change) for change in family.manifest.changes]
     operator_versions = dict(
         sorted((change.operator, change.operator_version) for change in family.manifest.changes)
     )
@@ -157,7 +188,7 @@ def generation_manifest(
             }
             for tier in family.tiers
         ],
-        "changes": changes,
+        "change_summary": _summarize_changes(family.manifest.changes),
     }
 
 

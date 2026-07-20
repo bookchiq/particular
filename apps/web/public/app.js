@@ -133,17 +133,45 @@ function renderRoleEffects(roleEffects) {
     .join("")}</ul>`;
 }
 
+function changeArticle(change) {
+  return `<article class="change"><span class="badge ${change.status}">${change.status === "accepted" ? "Accepted change" : "Not applied"}</span><p><strong>${escapeHtml(change.part_id)}, measure ${escapeHtml(change.measure)}</strong> · ${escapeHtml(change.operator)} v${escapeHtml(change.operator_version)}</p><p>${escapeHtml(change.explanation)}</p>${renderDeltas(change.difficulty_delta)}${renderRoleEffects(change.role_effects)}${change.rejection_reason ? `<small>Reason: ${escapeHtml(change.rejection_reason)}</small>` : ""}</article>`;
+}
+
+function renderNoops(noops) {
+  if (!noops || !noops.count) return "";
+  const byOperator = Object.entries(noops.by_operator)
+    .map(([operator, count]) => `${escapeHtml(operator)}: ${count}`)
+    .join(", ");
+  return `<p class="ledger-note">${noops.count} candidate${noops.count === 1 ? "" : "s"} found no applicable change${byOperator ? ` (${byOperator})` : ""}.</p>`;
+}
+
 function renderChanges(tier) {
-  const changes = payload.manifest.changes.filter(
-    (change) => change.tier === tier,
-  );
+  const summary = (payload.manifest.change_summary || {})[tier] || {
+    accepted: [],
+    rejected: [],
+    rejected_total: 0,
+    noops: { count: 0, by_operator: {} },
+  };
+  const accepted = summary.accepted
+    .slice()
+    .sort(
+      (a, b) =>
+        a.part_id.localeCompare(b.part_id) ||
+        String(a.measure).localeCompare(String(b.measure)),
+    );
+  const acceptedHtml =
+    accepted.map(changeArticle).join("") ||
+    "<p>No changes were applied for this tier.</p>";
+  let declinedHtml = "";
+  if (summary.rejected_total > 0) {
+    const note =
+      summary.rejected.length < summary.rejected_total
+        ? `<p class="ledger-note">Showing ${summary.rejected.length} of ${summary.rejected_total}. Download the change manifest for the full audit.</p>`
+        : "";
+    declinedHtml = `<details class="declined"><summary>Show ${summary.rejected_total} declined candidate${summary.rejected_total === 1 ? "" : "s"}</summary>${summary.rejected.map(changeArticle).join("")}${note}</details>`;
+  }
   document.querySelector("#changes").innerHTML =
-    changes
-      .map(
-        (change) =>
-          `<article class="change"><span class="badge ${change.status}">${change.status === "accepted" ? "Accepted change" : "Not applied"}</span><p><strong>${escapeHtml(change.part_id)}, measure ${escapeHtml(change.measure)}</strong> · ${escapeHtml(change.operator)} v${escapeHtml(change.operator_version)}</p><p>${escapeHtml(change.explanation)}</p>${renderDeltas(change.difficulty_delta)}${renderRoleEffects(change.role_effects)}${change.rejection_reason ? `<small>Reason: ${escapeHtml(change.rejection_reason)}</small>` : ""}</article>`,
-      )
-      .join("") || "<p>No changes proposed for this tier.</p>";
+    acceptedHtml + renderNoops(summary.noops) + declinedHtml;
 }
 
 function escapeHtml(value) {

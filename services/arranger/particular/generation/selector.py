@@ -40,6 +40,9 @@ class ManifestChange:
     difficulty_delta: dict[str, float]
     role_effects: tuple[str, ...]
     locators: tuple[SourceLocator, ...]
+    # True when the operator produced a real transformation (whether or not it
+    # was selected); False for structural no-ops that changed nothing.
+    applicable: bool
 
 
 @dataclass(frozen=True)
@@ -191,6 +194,7 @@ def generate_arrangement_family(
                     difficulty_delta=candidate.difficulty_delta,
                     role_effects=candidate.role_effects,
                     locators=candidate.locators,
+                    applicable=candidate.accepted,
                 )
             )
         tiers.append(
