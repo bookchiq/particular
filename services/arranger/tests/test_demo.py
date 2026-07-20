@@ -192,6 +192,99 @@ def test_limits_endpoint_reports_calibrated_limits(demo_server: tuple[str, int])
     assert payload["max_upload_bytes"] == MAX_UPLOAD_BYTES
 
 
+def test_expired_jobs_are_purged_before_lookup() -> None:
+    server = create_server(port=0, job_ttl_seconds=0.0)
+    try:
+        artifacts = server.storage_root / "job1" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "manifest.json").write_text("{}")
+        server.register_job("job1", artifacts)
+
+        # A zero-second TTL means the next lookup finds the job expired.
+        assert server.read_artifact("job1", "manifest.json") is None
+        assert not artifacts.parent.exists()
+    finally:
+        server.server_close()
+
+
+def test_explicit_delete_removes_a_job() -> None:
+    server = create_server(port=0)
+    try:
+        artifacts = server.storage_root / "job1" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "manifest.json").write_bytes(b"{}")
+        server.register_job("job1", artifacts)
+
+        assert server.read_artifact("job1", "manifest.json") == b"{}"
+        assert server.delete_job("job1") is True
+        assert server.read_artifact("job1", "manifest.json") is None
+        assert server.delete_job("job1") is False
+    finally:
+        server.server_close()
+
+
+def test_shutdown_removes_all_storage() -> None:
+    server = create_server(port=0)
+    root = server.storage_root
+    assert root.exists()
+
+    server.server_close()
+
+    assert not root.exists()
+
+
+def test_concurrent_delete_and_download_is_all_or_nothing() -> None:
+    server = create_server(port=0)
+    try:
+        artifacts = server.storage_root / "job1" / "artifacts"
+        artifacts.mkdir(parents=True)
+        content = b"x" * 100_000
+        (artifacts / "manifest.json").write_bytes(content)
+        server.register_job("job1", artifacts)
+
+        reads: list[bytes | None] = []
+
+        def reader() -> None:
+            while True:
+                body = server.read_artifact("job1", "manifest.json")
+                reads.append(body)
+                if body is None:
+                    return
+
+        thread = threading.Thread(target=reader)
+        thread.start()
+        server.delete_job("job1")
+        thread.join()
+
+        # A read never sees a torn file: it is the whole artifact or nothing.
+        assert all(body in (content, None) for body in reads)
+        assert reads[-1] is None
+    finally:
+        server.server_close()
+
+
+def test_explicit_delete_makes_downloads_unavailable(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, FIXTURE.read_bytes())
+    assert status == 200
+    job_id = payload["job_id"]
+    download = cast(dict[str, str], payload["artifacts"])["manifest"]
+
+    connection = http.client.HTTPConnection(*demo_server)
+    connection.request("DELETE", f"/artifacts/{job_id}")
+    delete_response = connection.getresponse()
+    delete_body = json.loads(delete_response.read())
+    connection.close()
+    assert delete_response.status == 200
+    assert delete_body == {"deleted": True}
+
+    connection = http.client.HTTPConnection(*demo_server)
+    connection.request("GET", download)
+    get_response = connection.getresponse()
+    get_response.read()
+    connection.close()
+    assert get_response.status == 404
+
+
 def test_serves_the_request_sequencer_module(demo_server: tuple[str, int]) -> None:
     connection = http.client.HTTPConnection(*demo_server)
     connection.request("GET", "/sequencer.js")

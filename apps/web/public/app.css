@@ -352,6 +352,16 @@ input:focus-visible {
   text-decoration: none;
   font-weight: bold;
 }
+.delete-job {
+  width: auto;
+  margin-top: 1.2rem;
+  padding: 0.55rem 1rem;
+  background: none;
+  color: var(--coral);
+  border: 1px solid var(--coral);
+  box-shadow: none;
+  font-weight: 700;
+}
 footer {
   display: flex;
   justify-content: space-between;
