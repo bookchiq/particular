@@ -16,14 +16,17 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
     result = main(["generate", str(FIXTURE), str(output)])
 
     assert result == 0
-    assert sorted(path.name for path in output.iterdir()) == [
+    produced = {path.name for path in output.iterdir()}
+    assert {
         "analysis.json",
         "challenge.musicxml",
         "core.musicxml",
         "foundation.musicxml",
         "manifest.json",
         "original-normalized.musicxml",
-    ]
+    } <= produced
+    # Per-part exports for every tier (the fixture has parts P1-P4).
+    assert {"foundation-P1.musicxml", "core-P4.musicxml", "challenge-P2.musicxml"} <= produced
     manifest = json.loads((output / "manifest.json").read_text())
     assert len(manifest["source_sha256"]) == 64
     assert manifest["engine_version"] == "0.0.0"

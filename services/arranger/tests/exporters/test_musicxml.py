@@ -3,10 +3,35 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from particular.exporters.musicxml import export_musicxml, semantic_fingerprint
+import pytest
+from particular.exporters.musicxml import (
+    MusicXMLExportError,
+    export_musicxml,
+    export_part_musicxml,
+    semantic_fingerprint,
+)
 from particular.importers.musicxml import parse_musicxml
 
 ROOT = Path(__file__).parents[4]
+
+
+def test_export_part_extracts_a_single_playable_part() -> None:
+    score = parse_musicxml(
+        (ROOT / "evaluation/fixtures/mixed-ensemble-transposition.musicxml").read_bytes()
+    )
+
+    reparsed = parse_musicxml(export_part_musicxml(score, "P2"))
+
+    assert [part.id for part in reparsed.parts] == ["P2"]
+
+
+def test_export_part_rejects_an_unknown_part() -> None:
+    score = parse_musicxml(
+        (ROOT / "evaluation/fixtures/mixed-ensemble-transposition.musicxml").read_bytes()
+    )
+
+    with pytest.raises(MusicXMLExportError, match="P99"):
+        export_part_musicxml(score, "P99")
 
 
 def test_two_round_trips_are_deterministic_for_supported_fixtures() -> None:

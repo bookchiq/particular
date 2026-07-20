@@ -285,6 +285,22 @@ def test_explicit_delete_makes_downloads_unavailable(demo_server: tuple[str, int
     assert get_response.status == 404
 
 
+def test_part_exports_are_listed_and_served_as_single_parts(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, FIXTURE.read_bytes())
+    assert status == 200
+    exports = payload["part_exports"]["Foundation"]
+    assert {entry["part_id"] for entry in exports} == {"P1", "P2", "P3", "P4"}
+
+    connection = http.client.HTTPConnection(*demo_server)
+    connection.request("GET", cast(str, exports[0]["url"]))
+    response = connection.getresponse()
+    body = response.read()
+    connection.close()
+    assert response.status == 200
+    assert response.getheader("Content-Type") == "application/vnd.recordare.musicxml+xml"
+    assert body.count(b"<part ") == 1
+
+
 def test_serves_the_request_sequencer_module(demo_server: tuple[str, int]) -> None:
     connection = http.client.HTTPConnection(*demo_server)
     connection.request("GET", "/sequencer.js")

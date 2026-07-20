@@ -72,6 +72,29 @@ function successPayload(overrides = {}) {
       manifest: "/artifacts/JOB123/manifest",
       analysis: "/artifacts/JOB123/analysis",
     },
+    part_exports: {
+      Foundation: [
+        {
+          part_id: "P1",
+          part_name: "Violin",
+          url: "/artifacts/JOB123/foundation-P1.musicxml",
+        },
+      ],
+      Core: [
+        {
+          part_id: "P1",
+          part_name: "Violin",
+          url: "/artifacts/JOB123/core-P1.musicxml",
+        },
+      ],
+      Challenge: [
+        {
+          part_id: "P1",
+          part_name: "Violin",
+          url: "/artifacts/JOB123/challenge-P1.musicxml",
+        },
+      ],
+    },
     ...overrides.payload,
   };
 }
@@ -293,6 +316,28 @@ describe("director review UI", () => {
     expect(document.querySelector("#score-map-detail").textContent).toContain(
       "Two adjacent notes merged",
     );
+  });
+
+  it("offers a per-part download that follows the selected tier", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    expect(
+      document.querySelector("#score-map .part-export").getAttribute("href"),
+    ).toBe("/artifacts/JOB123/foundation-P1.musicxml");
+
+    const coreTab = [
+      ...document.querySelectorAll('#tier-tabs [role="tab"]'),
+    ].find((tab) => tab.textContent === "Core");
+    coreTab.click();
+    expect(
+      document.querySelector("#score-map .part-export").getAttribute("href"),
+    ).toBe("/artifacts/JOB123/core-P1.musicxml");
   });
 
   it("moves focus to the results heading after generation", async () => {
