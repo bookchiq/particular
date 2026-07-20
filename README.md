@@ -4,6 +4,10 @@ Adaptive arrangements for mixed-ability ensembles. Particular will turn an autho
 
 The project is at the foundation stage. The [MVP plan](docs/plans/2026-07-18-001-feat-particular-mvp-plan.md) defines the product contract and implementation sequence.
 
+## Provenance
+
+Particular was built at a hackathon. The work up to and including commit `4fd0e5a` was authored by OpenAI Codex; everything after that line is later work by Sarah Lewis with Claude (Anthropic). The [Codex authorship boundary](docs/provenance/codex-authorship-boundary.md) records exactly what Codex built, decided, and deliberately left undone.
+
 ## Repository layout
 
 - `apps/web`: director-facing TypeScript application
