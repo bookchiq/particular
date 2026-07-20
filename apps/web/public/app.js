@@ -1,6 +1,11 @@
+import { createSequencer } from "./sequencer.js";
+
 const form = document.querySelector("#score-form");
 const statusLine = document.querySelector("#status");
 const results = document.querySelector("#results");
+const submitButton = form.querySelector('button[type="submit"]');
+const sequencer = createSequencer();
+let inFlight = null;
 let payload;
 let profileOverrides = {};
 
@@ -32,6 +37,11 @@ form.addEventListener("submit", async (event) => {
   const file = document.querySelector("#score-file").files[0];
   const basis = form.querySelector('input[name="rights-basis"]:checked');
   if (!file || !basis) return;
+  // Supersede any in-flight request: take a fresh token and cancel the old fetch.
+  const token = sequencer.next();
+  if (inFlight) inFlight.abort();
+  inFlight = new AbortController();
+  submitButton.disabled = true;
   statusLine.textContent = "Listening closely… building coordinated parts.";
   // A new attempt invalidates any previously shown arrangement until it succeeds.
   results.hidden = true;
@@ -46,24 +56,34 @@ form.addEventListener("submit", async (event) => {
         "Content-Type": "application/octet-stream",
       },
       body: file,
+      signal: inFlight.signal,
     });
-    payload = await response.json();
+    const body = await response.json();
+    // A newer submission has superseded this one; drop the stale result.
+    if (!sequencer.isCurrent(token)) return;
+    payload = body;
     if (!response.ok) {
       diagnosticRef = payload.diagnostic_id
         ? ` (ref ${payload.diagnostic_id})`
         : "";
       throw new Error(payload.message || "Your score could not be processed.");
     }
-    render();
+    render(file.name);
     statusLine.textContent = "Your arrangement family is ready for review.";
     results.hidden = false;
     results.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
+    if (error.name === "AbortError" || !sequencer.isCurrent(token)) return;
     statusLine.textContent = `Could not generate parts: ${error.message}${diagnosticRef}`;
+  } finally {
+    // Only the latest request restores the control; superseded ones leave it be.
+    if (sequencer.isCurrent(token)) submitButton.disabled = false;
   }
 });
 
-function render() {
+function render(sourceName) {
+  const source = document.querySelector("#source-name");
+  if (source) source.textContent = sourceName ? `Source: ${sourceName}` : "";
   const tabs = document.querySelector("#tier-tabs");
   tabs.innerHTML = "";
   ["Foundation", "Core", "Challenge"].forEach((tier, index) => {

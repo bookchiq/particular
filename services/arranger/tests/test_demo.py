@@ -192,6 +192,17 @@ def test_limits_endpoint_reports_calibrated_limits(demo_server: tuple[str, int])
     assert payload["max_upload_bytes"] == MAX_UPLOAD_BYTES
 
 
+def test_serves_the_request_sequencer_module(demo_server: tuple[str, int]) -> None:
+    connection = http.client.HTTPConnection(*demo_server)
+    connection.request("GET", "/sequencer.js")
+    response = connection.getresponse()
+    body = response.read()
+    connection.close()
+
+    assert response.status == 200
+    assert b"createSequencer" in body
+
+
 def test_static_page_has_accessible_review_flow() -> None:
     html = (ROOT / "apps/web/public/index.html").read_text()
     assert '<label for="score-file">' in html
