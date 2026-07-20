@@ -6,12 +6,21 @@ Particular describes difficulty as an explainable vector, not a single score or 
 
 - written and sounding range, tessitura, and extremes
 - note and onset density
-- shortest rhythmic subdivision and rhythmic irregularity
+- shortest rhythmic subdivision, syncopation, and tuplet irregularity
+- accidentals measured as written relative to the active key signature
 - interval size, direction changes, and position or register shifts
 - sustained duration, breath demand, repetition, and endurance
 - articulation and dynamic complexity
 - simultaneous voices, stops, or other polyphony where applicable
 - instrument-profile adjustments for transposition and idiomatic technique
+
+Features are computed per measure and then combined into the part-level vector,
+so a demanding passage is not hidden by an easy average. Accidental burden counts
+notes whose written alteration differs from what the key signature already
+implies — a passage in D major is not penalized for its diatonic F♯ — and honors
+measure-scoped accidental persistence. Rhythmic complexity is a normalized blend
+of subdivision, syncopation (off-beat notes held across a beat), and tuplet
+irregularity rather than the shortest value alone.
 
 Every passage retains its vector components and source locators. A tier policy targets reductions across relevant dimensions; it does not require every component to decrease when doing so would damage the music.
 

@@ -25,7 +25,8 @@ def test_second_violin_has_explainable_golden_features() -> None:
     assert analysis.vector.shortest_duration_quarters == 0.5
     assert analysis.vector.max_note_density_per_quarter == 2.0
     assert analysis.vector.accidental_burden == 1
-    assert analysis.vector.rhythmic_complexity == 0.5
+    assert analysis.vector.syncopation == 0.0
+    assert analysis.vector.rhythmic_complexity == 0.25
 
 
 def test_unknown_and_rest_only_part_uses_generic_profile() -> None:
@@ -102,6 +103,75 @@ def test_invalid_profile_documents_are_rejected() -> None:
                 },
             }
         )
+
+
+def _key_passage(fifths: int, notes: str) -> bytes:
+    return (
+        "<score-partwise><part-list><score-part id='P1'><part-name>Violin</part-name>"
+        "</score-part></part-list><part id='P1'><measure number='1'><attributes>"
+        f"<divisions>4</divisions><key><fifths>{fifths}</fifths></key>"
+        "<time><beats>4</beats><beat-type>4</beat-type></time></attributes>"
+        f"{notes}</measure></part></score-partwise>"
+    ).encode()
+
+
+def _note(step: str, octave: int, duration: int, alter: int | None = None) -> str:
+    alteration = f"<alter>{alter}</alter>" if alter is not None else ""
+    return (
+        f"<note><pitch><step>{step}</step>{alteration}<octave>{octave}</octave></pitch>"
+        f"<duration>{duration}</duration></note>"
+    )
+
+
+def test_black_keys_within_the_key_signature_are_not_accidentals() -> None:
+    # D major carries F# and C#; neither needs a written accidental.
+    vector = analyze_part(
+        parse_musicxml(
+            _key_passage(2, _note("F", 5, 8, alter=1) + _note("C", 5, 8, alter=1))
+        ).parts[0]
+    ).vector
+
+    assert vector.accidental_burden == 0
+
+
+def test_notes_contradicting_the_key_are_accidentals() -> None:
+    # In D major a G# is chromatic and an F natural cancels the key signature.
+    vector = analyze_part(
+        parse_musicxml(_key_passage(2, _note("G", 5, 8, alter=1) + _note("F", 5, 8))).parts[0]
+    ).vector
+
+    assert vector.accidental_burden == 2
+
+
+def test_syncopation_counts_offbeat_notes_that_cross_a_beat() -> None:
+    # Only the off-beat quarter that spans the next downbeat is syncopated.
+    notes = (
+        _note("C", 5, 2)  # onset 0, on the beat
+        + _note("D", 5, 4)  # onset 2, off-beat, crosses beat at 4
+        + _note("E", 5, 2)  # onset 6, off-beat but ends on the beat
+        + _note("F", 5, 8)  # onset 8, on the beat
+    )
+    vector = analyze_part(parse_musicxml(_key_passage(0, notes)).parts[0]).vector
+
+    assert vector.syncopation == 0.25
+    # Rhythmic complexity now reflects syncopation, not just the shortest value.
+    assert vector.rhythmic_complexity == pytest.approx(0.5 * 0.5 + 0.3 * 0.25)
+
+
+def test_tuplets_add_to_rhythmic_complexity_beyond_subdivision() -> None:
+    # Three eighth-note triplets: duration 1 against 3 divisions per quarter.
+    triplets = "".join(_note(step, 5, 1) for step in ("C", "D", "E"))
+    xml = (
+        "<score-partwise><part-list><score-part id='P1'><part-name>Violin</part-name>"
+        "</score-part></part-list><part id='P1'><measure number='1'><attributes>"
+        "<divisions>3</divisions></attributes>"
+        f"{triplets}</measure></part></score-partwise>"
+    ).encode()
+
+    vector = analyze_part(parse_musicxml(xml).parts[0]).vector
+
+    subdivision_only = 0.5 * max(0.0, 1.0 - vector.shortest_duration_quarters)
+    assert vector.rhythmic_complexity > subdivision_only
 
 
 def _single_part_xml(part_name: str, instrument_name: str | None) -> bytes:

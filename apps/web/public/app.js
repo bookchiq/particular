@@ -10,6 +10,7 @@ const labels = {
   max_note_density_per_quarter: "Notes / quarter",
   shortest_duration_quarters: "Shortest value",
   accidental_burden: "Accidental burden",
+  syncopation: "Syncopation",
   rhythmic_complexity: "Rhythm complexity",
 };
 
