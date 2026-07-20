@@ -71,7 +71,17 @@ form.addEventListener("submit", async (event) => {
     render(file.name);
     statusLine.textContent = "Your arrangement family is ready for review.";
     results.hidden = false;
-    results.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Move focus into the results so keyboard and screen-reader users land
+    // there; the aria-live status still announces completion.
+    const heading = document.querySelector("#results-title");
+    if (heading) heading.focus({ preventScroll: true });
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    results.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "start",
+    });
   } catch (error) {
     if (error.name === "AbortError" || !sequencer.isCurrent(token)) return;
     statusLine.textContent = `Could not generate parts: ${error.message}${diagnosticRef}`;
@@ -81,26 +91,63 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+const TIERS = ["Foundation", "Core", "Challenge"];
+
+// Build the tier tablist following the ARIA Tabs pattern: one tab is selected
+// with tabindex 0, the rest are -1 (roving tabindex), and each controls the
+// shared change-ledger tabpanel.
+function renderTabs() {
+  const tablist = document.querySelector("#tier-tabs");
+  tablist.innerHTML = "";
+  TIERS.forEach((tier, index) => {
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.id = `tier-tab-${tier}`;
+    tab.role = "tab";
+    tab.dataset.tier = tier;
+    tab.textContent = tier;
+    tab.setAttribute("aria-controls", "changes");
+    tab.setAttribute("aria-selected", String(index === 0));
+    tab.tabIndex = index === 0 ? 0 : -1;
+    tab.addEventListener("click", () => selectTier(tier, { focus: true }));
+    tablist.append(tab);
+  });
+  tablist.onkeydown = onTablistKeydown;
+  selectTier(TIERS[0], { focus: false });
+}
+
+function selectTier(tier, { focus }) {
+  for (const tab of document.querySelectorAll('#tier-tabs [role="tab"]')) {
+    const selected = tab.dataset.tier === tier;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    if (selected && focus) tab.focus();
+  }
+  const panel = document.querySelector("#changes");
+  if (panel) panel.setAttribute("aria-labelledby", `tier-tab-${tier}`);
+  renderChanges(tier);
+}
+
+function onTablistKeydown(event) {
+  const tabs = [...document.querySelectorAll('#tier-tabs [role="tab"]')];
+  const current = tabs.findIndex(
+    (tab) => tab.getAttribute("aria-selected") === "true",
+  );
+  let next = null;
+  if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
+  else if (event.key === "ArrowLeft")
+    next = (current - 1 + tabs.length) % tabs.length;
+  else if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = tabs.length - 1;
+  if (next === null) return;
+  event.preventDefault();
+  selectTier(tabs[next].dataset.tier, { focus: true });
+}
+
 function render(sourceName) {
   const source = document.querySelector("#source-name");
   if (source) source.textContent = sourceName ? `Source: ${sourceName}` : "";
-  const tabs = document.querySelector("#tier-tabs");
-  tabs.innerHTML = "";
-  ["Foundation", "Core", "Challenge"].forEach((tier, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.role = "tab";
-    button.textContent = tier;
-    button.setAttribute("aria-selected", String(index === 0));
-    button.onclick = () => {
-      tabs
-        .querySelectorAll("button")
-        .forEach((x) => x.setAttribute("aria-selected", "false"));
-      button.setAttribute("aria-selected", "true");
-      renderChanges(tier);
-    };
-    tabs.append(button);
-  });
+  renderTabs();
   document.querySelector("#difficulty").innerHTML = payload.analysis.parts
     .map(
       (part) =>
@@ -121,7 +168,6 @@ function render(sourceName) {
         "Profile selected. Create particular parts again to apply it.";
     });
   });
-  renderChanges("Foundation");
   const names = {
     original: "Normalized original",
     foundation: "Foundation",
