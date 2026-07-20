@@ -137,6 +137,18 @@ def validate_family(
         if _voice_coverage(tier.score) != source_coverage:
             raise ArrangementValidationError(f"{tier.name}: voice timeline changed")
         _validate_pitch_spelling(tier.score, tier.name)
+        for part in tier.score.parts:
+            minimum, maximum = instrument_range(part, (profile_overrides or {}).get(part.id))
+            for measure in part.measures:
+                for event in measure.events:
+                    if (
+                        event.kind == "note"
+                        and event.written_pitch is not None
+                        and not minimum <= event.written_pitch <= maximum
+                    ):
+                        raise ArrangementValidationError(
+                            f"{tier.name}: {part.id} has an out-of-range note"
+                        )
         tier_events = _events_by_locator(tier.score)
         if not protected.issubset(tier_events):
             raise ArrangementValidationError(f"{tier.name}: protected ensemble role was removed")
@@ -145,15 +157,11 @@ def validate_family(
         _validate_ties(tier.score, tier.name)
         count = 0
         for part in tier.score.parts:
-            minimum, maximum = instrument_range(part, (profile_overrides or {}).get(part.id))
             for measure in part.measures:
-                for event in measure.events:
-                    if event.kind == "note" and event.written_pitch is not None:
-                        count += 1
-                        if not minimum <= event.written_pitch <= maximum:
-                            raise ArrangementValidationError(
-                                f"{tier.name}: {part.id} has an out-of-range note"
-                            )
+                count += sum(
+                    event.kind == "note" and event.written_pitch is not None
+                    for event in measure.events
+                )
         counts.append(count)
     if counts != sorted(counts):
         raise ArrangementValidationError("tier note counts are not monotonic")

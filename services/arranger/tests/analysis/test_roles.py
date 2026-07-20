@@ -55,3 +55,20 @@ def test_aligns_parts_with_different_division_units() -> None:
     labels = analyze_roles(parse_musicxml(xml))
     assert any(label.role == "melody" and label.locator.part_id == "P1" for label in labels)
     assert any(label.role == "bass" and label.locator.part_id == "P2" for label in labels)
+
+
+def test_protects_sustained_bass_under_a_later_entrance() -> None:
+    xml = b"""<score-partwise><part-list>
+    <score-part id='P1'><part-name>Flute</part-name></score-part>
+    <score-part id='P2'><part-name>Cello</part-name></score-part></part-list>
+    <part id='P1'><measure number='1'><attributes><divisions>4</divisions></attributes>
+    <forward><duration>4</duration></forward><note><pitch><step>G</step><octave>5</octave></pitch><duration>4</duration></note></measure></part>
+    <part id='P2'><measure number='1'><attributes><divisions>8</divisions></attributes>
+    <note><pitch><step>C</step><octave>3</octave></pitch><duration>16</duration></note></measure></part>
+    </score-partwise>"""
+
+    labels = analyze_roles(parse_musicxml(xml))
+
+    bass = [label for label in labels if label.locator.part_id == "P2" and label.role == "bass"]
+    assert bass
+    assert any("active sounding span" in item for label in bass for item in label.evidence)

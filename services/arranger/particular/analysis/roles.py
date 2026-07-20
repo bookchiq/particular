@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from dataclasses import dataclass
 from fractions import Fraction
 
 from particular.domain.roles import RoleLabel
 from particular.domain.score import Event, Score, SourceLocator
+
+
+@dataclass(frozen=True)
+class _SoundingSpan:
+    event: Event
+    start: Fraction
+    end: Fraction
 
 
 def protected_locators(score: Score) -> frozenset[SourceLocator]:
@@ -22,21 +29,31 @@ def protected_locators(score: Score) -> frozenset[SourceLocator]:
 def analyze_roles(score: Score) -> tuple[RoleLabel, ...]:
     """Label observable ensemble roles and conservatively protect uncertain material."""
 
-    aligned: dict[Fraction, list[Event]] = defaultdict(list)
+    spans: list[_SoundingSpan] = []
     for part in score.parts:
         measure_offset = Fraction()
         for measure in part.measures:
             for event in measure.events:
                 if event.kind == "note" and event.sounding_pitch is not None:
-                    aligned[measure_offset + Fraction(event.onset, measure.divisions)].append(event)
+                    start = measure_offset + Fraction(event.onset, measure.divisions)
+                    spans.append(
+                        _SoundingSpan(
+                            event,
+                            start,
+                            start + Fraction(event.duration, measure.divisions),
+                        )
+                    )
             measure_offset += Fraction(measure.nominal_duration, measure.divisions)
     labels: list[RoleLabel] = []
-    for onset, events in sorted(aligned.items()):
+    for onset in sorted({span.start for span in spans}):
+        active = [span for span in spans if span.start <= onset < span.end]
+        events = [span.event for span in active]
         pitches = [event.sounding_pitch for event in events if event.sounding_pitch is not None]
         low, high = min(pitches), max(pitches)
         ambiguous = low == high or pitches.count(high) > 1
-        shortest = min(event.duration for event in events)
-        for event in events:
+        shortest = min(span.end - span.start for span in active)
+        for span in active:
+            event = span.event
             pitch = event.sounding_pitch
             evidence: list[str] = []
             if ambiguous:
@@ -51,9 +68,11 @@ def analyze_roles(score: Score) -> tuple[RoleLabel, ...]:
             else:
                 role, confidence = "harmonic_anchor", 0.7
                 evidence.append("interior chord tone at ensemble onset")
-            if event.duration == shortest and len(events) > 1:
+            if span.end - span.start == shortest and len(events) > 1:
                 evidence.append("supports rhythmic drive at this onset")
-            if onset == 0:
+            if span.start < onset:
+                evidence.append("active sounding span under a later ensemble entrance")
+            if span.start == onset == 0:
                 evidence.append("exposed entrance at score opening")
             labels.append(
                 RoleLabel(
@@ -65,7 +84,7 @@ def analyze_roles(score: Score) -> tuple[RoleLabel, ...]:
                     protected=True,
                 )
             )
-            if event.duration == shortest and len(events) > 1:
+            if span.end - span.start == shortest and len(events) > 1:
                 labels.append(
                     RoleLabel(
                         role="rhythmic_drive",
@@ -76,7 +95,7 @@ def analyze_roles(score: Score) -> tuple[RoleLabel, ...]:
                         protected=True,
                     )
                 )
-            if onset == 0:
+            if span.start == onset == 0:
                 labels.append(
                     RoleLabel(
                         role="exposed_entrance",
