@@ -13,6 +13,7 @@ class DifficultyVector:
     max_note_density_per_quarter: float
     shortest_duration_quarters: float
     accidental_burden: int
+    syncopation: float
     rhythmic_complexity: float
 
 
