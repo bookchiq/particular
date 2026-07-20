@@ -6,6 +6,7 @@ import argparse
 import json
 import secrets
 import shutil
+import sys
 import tempfile
 import threading
 from collections.abc import Sequence
@@ -16,6 +17,22 @@ from typing import Any, cast
 from urllib.parse import unquote, urlsplit
 
 from particular.application import ARTIFACT_FILENAMES, generate_to_directory
+from particular.errors import classify_error
+
+# Director-friendly guidance for transport-level rejections that happen before
+# generation. Generation failures draw their guidance from classify_error.
+TRANSPORT_GUIDANCE = {
+    "not_found": "That resource is not available.",
+    "rights_attestation_required": (
+        "Confirm you are authorized to arrange this score, then upload it again."
+    ),
+    "unsupported_filename": "Upload a MusicXML (.musicxml or .xml) or compressed .mxl file.",
+    "content_length_required": "The upload was missing its length. Try uploading the file again.",
+    "upload_too_large": (
+        "This file is larger than the demo accepts. Try a smaller score or a single movement."
+    ),
+    "incomplete_upload": "The upload did not finish. Check your connection and try again.",
+}
 
 MAX_UPLOAD_BYTES = 2_000_000
 MAX_JOBS = 8
@@ -72,6 +89,22 @@ class DemoHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _error(
+        self,
+        status: int,
+        code: str,
+        *,
+        message: str | None = None,
+        diagnostic_id: str | None = None,
+    ) -> None:
+        body: dict[str, Any] = {
+            "error": code,
+            "message": message or TRANSPORT_GUIDANCE.get(code, ""),
+        }
+        if diagnostic_id is not None:
+            body["diagnostic_id"] = diagnostic_id
+        self._json(status, body)
+
     def _profile_overrides(self) -> dict[str, str]:
         raw_overrides = self.headers.get("X-Particular-Instrument-Profiles")
         if raw_overrides is None:
@@ -89,10 +122,10 @@ class DemoHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if urlsplit(self.path).path != "/api/generate":
-            self._json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
+            self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
         if self.headers.get("X-Particular-Rights-Attested") != "true":
-            self._json(HTTPStatus.FORBIDDEN, {"error": "rights_attestation_required"})
+            self._error(HTTPStatus.FORBIDDEN, "rights_attestation_required")
             return
         filename = self.headers.get("X-Particular-Filename", "")
         if (
@@ -100,21 +133,21 @@ class DemoHandler(BaseHTTPRequestHandler):
             or Path(filename).name != filename
             or Path(filename).suffix.casefold() not in {".xml", ".musicxml", ".mxl"}
         ):
-            self._json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "unsupported_filename"})
+            self._error(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_filename")
             return
         try:
             length = int(self.headers.get("Content-Length", ""))
         except ValueError:
             length = -1
         if length < 1:
-            self._json(HTTPStatus.LENGTH_REQUIRED, {"error": "content_length_required"})
+            self._error(HTTPStatus.LENGTH_REQUIRED, "content_length_required")
             return
         if length > MAX_UPLOAD_BYTES:
-            self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "upload_too_large"})
+            self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "upload_too_large")
             return
         contents = self.rfile.read(length)
         if len(contents) != length:
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "incomplete_upload"})
+            self._error(HTTPStatus.BAD_REQUEST, "incomplete_upload")
             return
         job_id = secrets.token_urlsafe(18)
         job_root = self.server.storage_root / job_id
@@ -129,10 +162,19 @@ class DemoHandler(BaseHTTPRequestHandler):
             analysis = json.loads((output / ARTIFACTS["analysis"]).read_text())
         except (OSError, ValueError) as error:
             shutil.rmtree(job_root, ignore_errors=True)
-            self._json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": "generation_failed", "message": str(error)},
+            public = classify_error(error)
+            diagnostic_id = secrets.token_hex(8)
+            # Correlate without exposing content: only the id and exception class.
+            print(
+                f"particular-demo diagnostic {diagnostic_id} {type(error).__name__}",
+                file=sys.stderr,
             )
+            status = (
+                HTTPStatus.INTERNAL_SERVER_ERROR
+                if public.code == "internal_error"
+                else HTTPStatus.BAD_REQUEST
+            )
+            self._error(status, public.code, message=public.message, diagnostic_id=diagnostic_id)
             return
         source.unlink(missing_ok=True)
         self.server.register_job(job_id, output)
@@ -160,7 +202,7 @@ class DemoHandler(BaseHTTPRequestHandler):
             return
         pieces = path.split("/")
         if len(pieces) != 4 or pieces[1] != "artifacts" or pieces[3] not in ARTIFACTS:
-            self._json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
+            self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
         job_id, artifact = pieces[2], pieces[3]
         with self.server.jobs_lock:
@@ -174,7 +216,7 @@ class DemoHandler(BaseHTTPRequestHandler):
                 except OSError:
                     artifact_body = None
         if artifact_body is None:
-            self._json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
+            self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
         content_type = (
             "application/json"

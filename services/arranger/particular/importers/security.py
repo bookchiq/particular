@@ -18,6 +18,10 @@ class UnsafeScoreError(ValueError):
     """Input failed a safety boundary before musical parsing."""
 
 
+class ScoreSizeError(UnsafeScoreError):
+    """Input exceeds an archive size, entry-count, or decompression limit."""
+
+
 @dataclass(frozen=True)
 class ArchiveLimits:
     max_files: int = 32
@@ -108,7 +112,7 @@ def extract_mxl(data: bytes, limits: ArchiveLimits = DEFAULT_ARCHIVE_LIMITS) -> 
     with archive:
         entries = [entry for entry in archive.infolist() if not entry.is_dir()]
         if len(entries) > limits.max_files:
-            raise UnsafeScoreError("MXL contains too many entries")
+            raise ScoreSizeError("MXL contains too many entries")
         total = 0
         by_path: dict[str, zipfile.ZipInfo] = {}
         fallback: list[str] = []
@@ -117,16 +121,16 @@ def extract_mxl(data: bytes, limits: ArchiveLimits = DEFAULT_ARCHIVE_LIMITS) -> 
             if path.suffix.lower() in {".zip", ".mxl"}:
                 raise UnsafeScoreError("nested archives are not allowed")
             if entry.file_size > limits.max_entry_bytes:
-                raise UnsafeScoreError("MXL entry size exceeds limit")
+                raise ScoreSizeError("MXL entry size exceeds limit")
             total += entry.file_size
             if total > limits.max_total_bytes:
-                raise UnsafeScoreError("MXL total size exceeds limit")
+                raise ScoreSizeError("MXL total size exceeds limit")
             if entry.compress_size == 0:
                 ratio = float("inf") if entry.file_size else 1.0
             else:
                 ratio = entry.file_size / entry.compress_size
             if ratio > limits.max_compression_ratio:
-                raise UnsafeScoreError("MXL compression ratio exceeds limit")
+                raise ScoreSizeError("MXL compression ratio exceeds limit")
             by_path[path.as_posix()] = entry
             if path.suffix.lower() in SCORE_SUFFIXES and path.parts[0] != "META-INF":
                 fallback.append(path.as_posix())

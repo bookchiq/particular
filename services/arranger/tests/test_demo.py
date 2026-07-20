@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import http.client
+import io
 import json
 import threading
+import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, cast
@@ -125,11 +127,38 @@ def test_rejects_oversize_and_unsupported_filename(demo_server: tuple[str, int])
     assert status == 415
 
 
+def _mxl(entries: dict[str, bytes]) -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for name, data in entries.items():
+            archive.writestr(name, data)
+    return output.getvalue()
+
+
 def test_malformed_score_returns_structured_error(demo_server: tuple[str, int]) -> None:
     status, payload = _post(demo_server, b"<score-partwise>")
     assert status == 400
-    assert payload["error"] == "generation_failed"
+    assert payload["error"] == "malformed_score"
+    assert payload["message"]
+    assert "diagnostic_id" in payload
     assert "score-partwise" not in payload["message"]
+
+
+def test_unsafe_archive_upload_is_sanitized(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, _mxl({"nested.zip": b"zip"}), filename="score.mxl")
+    assert status == 400
+    assert payload["error"] == "unsafe_archive"
+    assert "diagnostic_id" in payload
+    assert "nested" not in payload["message"].lower()
+
+
+def test_oversized_archive_upload_is_sanitized(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(
+        demo_server, _mxl({f"f{index}.xml": b"x" for index in range(40)}), filename="score.mxl"
+    )
+    assert status == 400
+    assert payload["error"] == "oversized_file"
+    assert "diagnostic_id" in payload
 
 
 def test_static_page_has_accessible_review_flow() -> None:
