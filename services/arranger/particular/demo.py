@@ -19,7 +19,12 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlsplit
 
-from particular.application import ARTIFACT_FILENAMES, RIGHTS_BASES, generate_to_directory
+from particular.application import (
+    ARTIFACT_FILENAMES,
+    RIGHTS_BASES,
+    generate_to_directory,
+    part_export_filename,
+)
 from particular.errors import classify_error
 from particular.importers.musicxml import MAX_EVENTS, MAX_PARTS
 from particular.importers.security import DEFAULT_ARCHIVE_LIMITS
@@ -277,6 +282,20 @@ class DemoHandler(BaseHTTPRequestHandler):
                 "analysis": analysis,
                 "manifest": manifest,
                 "artifacts": {key: f"/artifacts/{job_id}/{key}" for key in ARTIFACTS},
+                "part_exports": {
+                    tier: [
+                        {
+                            "part_id": part["part_id"],
+                            "part_name": part["part_name"],
+                            "url": (
+                                f"/artifacts/{job_id}/"
+                                + part_export_filename(tier, part["part_id"])
+                            ),
+                        }
+                        for part in analysis["parts"]
+                    ]
+                    for tier in ("Foundation", "Core", "Challenge")
+                },
             },
         )
 
@@ -295,11 +314,16 @@ class DemoHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         pieces = path.split("/")
-        if len(pieces) != 4 or pieces[1] != "artifacts" or pieces[3] not in ARTIFACTS:
+        if len(pieces) != 4 or pieces[1] != "artifacts":
             self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
-        job_id, artifact = pieces[2], pieces[3]
-        artifact_filename = ARTIFACTS[artifact]
+        job_id, name = pieces[2], pieces[3]
+        # Accept a stable key (e.g. "foundation") or a part-export filename; the
+        # basename check keeps requests inside the job's artifact directory.
+        artifact_filename = ARTIFACTS.get(name, name)
+        if not artifact_filename or Path(artifact_filename).name != artifact_filename:
+            self._error(HTTPStatus.NOT_FOUND, "not_found")
+            return
         artifact_body = self.server.read_artifact(job_id, artifact_filename)
         if artifact_body is None:
             self._error(HTTPStatus.NOT_FOUND, "not_found")

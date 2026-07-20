@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import xml.etree.ElementTree as ET
+from dataclasses import replace
 from typing import cast
 
 from particular.domain.score import Event, Score
@@ -141,6 +142,15 @@ def export_musicxml(score: Score) -> bytes:
         bytes,
         ET.tostring(root, encoding="utf-8", xml_declaration=True, short_empty_elements=True),
     )
+
+
+def export_part_musicxml(score: Score, part_id: str) -> bytes:
+    """Export a single part as a standalone, rehearsal-ready MusicXML score."""
+
+    part = next((candidate for candidate in score.parts if candidate.id == part_id), None)
+    if part is None:
+        raise MusicXMLExportError(f"score has no part {part_id!r}")
+    return export_musicxml(replace(score, parts=(part,)))
 
 
 def semantic_fingerprint(score: Score) -> str:

@@ -15,7 +15,11 @@ from typing import Any
 
 from particular.analysis.difficulty import analyze_part, instrument_profiles
 from particular.domain.score import Score
-from particular.exporters.musicxml import export_musicxml, semantic_fingerprint
+from particular.exporters.musicxml import (
+    export_musicxml,
+    export_part_musicxml,
+    semantic_fingerprint,
+)
 from particular.generation.selector import ArrangementFamily, generate_arrangement_family
 from particular.importers.musicxml import parse_musicxml
 from particular.importers.security import extract_mxl
@@ -91,6 +95,12 @@ ARTIFACT_FILENAMES = {
     "manifest": "manifest.json",
     "analysis": "analysis.json",
 }
+
+
+def part_export_filename(tier: str, part_id: str) -> str:
+    """Stable filename for a single tier part's rehearsal-ready MusicXML."""
+
+    return f"{tier.casefold()}-{part_id}.musicxml"
 
 
 def _validate_profile_overrides(
@@ -236,6 +246,10 @@ def generate_to_directory(
         for tier in family.tiers:
             artifact = ARTIFACT_FILENAMES[tier.name.casefold()]
             (temporary / artifact).write_bytes(export_musicxml(tier.score))
+            for part in tier.score.parts:
+                (temporary / part_export_filename(tier.name, part.id)).write_bytes(
+                    export_part_musicxml(tier.score, part.id)
+                )
         (temporary / ARTIFACT_FILENAMES["manifest"]).write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",

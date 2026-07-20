@@ -150,6 +150,13 @@ function renderScoreMap(tier) {
   const container = document.querySelector("#score-map");
   if (!container) return;
   const located = changesByMeasure(tier);
+  const exports = ((payload.part_exports || {})[tier] || []).reduce(
+    (map, entry) => {
+      map[entry.part_id] = entry.url;
+      return map;
+    },
+    {},
+  );
   container.innerHTML = payload.analysis.parts
     .map((part) => {
       const cells = (part.measures || [])
@@ -169,7 +176,11 @@ function renderScoreMap(tier) {
           return `<button type="button" class="measure ${state}" data-part="${escapeHtml(part.part_id)}" data-measure="${escapeHtml(measure)}" aria-label="${escapeHtml(part.part_name)} measure ${escapeHtml(measure)}: ${label}">${escapeHtml(measure)}</button>`;
         })
         .join("");
-      return `<div class="score-map-part"><span class="score-map-name">${escapeHtml(part.part_name)}</span><div class="measure-row">${cells}</div></div>`;
+      const url = exports[part.part_id];
+      const download = url
+        ? `<a class="part-export" href="${url}">${escapeHtml(part.part_name)} part ↓</a>`
+        : "";
+      return `<div class="score-map-part"><span class="score-map-name">${escapeHtml(part.part_name)}</span><div class="measure-row">${cells}</div>${download}</div>`;
     })
     .join("");
   container.querySelectorAll(".measure").forEach((cell) => {
