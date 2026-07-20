@@ -135,6 +135,16 @@ function render(sourceName) {
   )
     .map(([key, url]) => `<a href="${url}">${names[key]} ↓</a>`)
     .join("");
+  const deleteButton = document.querySelector("#delete-job");
+  if (deleteButton) {
+    deleteButton.onclick = async () => {
+      if (!payload.job_id) return;
+      await fetch(`/artifacts/${payload.job_id}`, { method: "DELETE" });
+      results.hidden = true;
+      statusLine.textContent =
+        "Deleted. Your score and generated parts were removed.";
+    };
+  }
 }
 
 const deltaLabels = {

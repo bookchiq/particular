@@ -9,7 +9,9 @@ import shutil
 import sys
 import tempfile
 import threading
+import time
 from collections.abc import Sequence
+from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -38,6 +40,11 @@ TRANSPORT_GUIDANCE = {
 
 MAX_UPLOAD_BYTES = 16_000_000
 MAX_JOBS = 8
+# Completed jobs are retained for 30 minutes after creation, then deleted even
+# if the loopback server stays open; a background sweep enforces this without
+# depending on later requests.
+DEFAULT_JOB_TTL_SECONDS = 1800.0
+SWEEP_INTERVAL_SECONDS = 60.0
 
 # Limits surfaced to the browser so a director sees them before uploading.
 PUBLIC_LIMITS = {
@@ -59,32 +66,85 @@ STATIC_FILES = {
 }
 
 
+@dataclass
+class _Job:
+    output: Path
+    created: float
+
+
 class DemoServer(ThreadingHTTPServer):
     """Server owning private job storage for its exact lifetime."""
 
-    def __init__(self, address: tuple[str, int]) -> None:
+    def __init__(
+        self, address: tuple[str, int], job_ttl_seconds: float = DEFAULT_JOB_TTL_SECONDS
+    ) -> None:
         self.storage_root = Path(tempfile.mkdtemp(prefix="particular-demo-"))
-        self.jobs: dict[str, Path] = {}
+        self.jobs: dict[str, _Job] = {}
         self.jobs_lock = threading.Lock()
+        self.job_ttl_seconds = job_ttl_seconds
+        self._stop = threading.Event()
         try:
             super().__init__(address, DemoHandler)
         except BaseException:
             shutil.rmtree(self.storage_root, ignore_errors=True)
             raise
+        self._sweeper = threading.Thread(target=self._sweep_loop, daemon=True)
+        self._sweeper.start()
 
     def server_close(self) -> None:
+        self._stop.set()
         super().server_close()
         shutil.rmtree(self.storage_root, ignore_errors=True)
 
-    def register_job(self, job_id: str, output: Path) -> None:
-        """Register an artifact directory and evict the oldest completed job."""
+    def _sweep_loop(self) -> None:
+        while not self._stop.wait(SWEEP_INTERVAL_SECONDS):
+            self.purge_expired()
+
+    def _purge_locked(self) -> None:
+        cutoff = time.monotonic() - self.job_ttl_seconds
+        for job_id in [key for key, job in self.jobs.items() if job.created <= cutoff]:
+            expired = self.jobs.pop(job_id)
+            shutil.rmtree(expired.output.parent, ignore_errors=True)
+
+    def purge_expired(self) -> None:
+        """Delete jobs older than the retention window."""
 
         with self.jobs_lock:
-            self.jobs[job_id] = output
+            self._purge_locked()
+
+    def register_job(self, job_id: str, output: Path) -> None:
+        """Register an artifact directory, purge expired jobs, and cap the count."""
+
+        with self.jobs_lock:
+            self._purge_locked()
+            self.jobs[job_id] = _Job(output, time.monotonic())
             while len(self.jobs) > MAX_JOBS:
                 oldest_job_id = next(iter(self.jobs))
                 expired = self.jobs.pop(oldest_job_id)
-                shutil.rmtree(expired.parent, ignore_errors=True)
+                shutil.rmtree(expired.output.parent, ignore_errors=True)
+
+    def delete_job(self, job_id: str) -> bool:
+        """Explicitly remove a job's artifacts; returns whether it existed."""
+
+        with self.jobs_lock:
+            job = self.jobs.pop(job_id, None)
+            if job is None:
+                return False
+            shutil.rmtree(job.output.parent, ignore_errors=True)
+            return True
+
+    def read_artifact(self, job_id: str, artifact_filename: str) -> bytes | None:
+        """Purge expired jobs, then read an artifact atomically under the lock."""
+
+        with self.jobs_lock:
+            self._purge_locked()
+            job = self.jobs.get(job_id)
+            if job is None:
+                return None
+            try:
+                return (job.output / artifact_filename).read_bytes()
+            except OSError:
+                return None
 
 
 class DemoHandler(BaseHTTPRequestHandler):
@@ -198,7 +258,11 @@ class DemoHandler(BaseHTTPRequestHandler):
             HTTPStatus.OK,
             {
                 "review_required": True,
-                "retention": {"max_completed_jobs": MAX_JOBS},
+                "retention": {
+                    "max_completed_jobs": MAX_JOBS,
+                    "ttl_seconds": self.server.job_ttl_seconds,
+                },
+                "job_id": job_id,
                 "analysis": analysis,
                 "manifest": manifest,
                 "artifacts": {key: f"/artifacts/{job_id}/{key}" for key in ARTIFACTS},
@@ -224,37 +288,43 @@ class DemoHandler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
         job_id, artifact = pieces[2], pieces[3]
-        with self.server.jobs_lock:
-            output = self.server.jobs.get(job_id)
-            if output is None:
-                artifact_body = None
-            else:
-                target = output / ARTIFACTS[artifact]
-                try:
-                    artifact_body = target.read_bytes()
-                except OSError:
-                    artifact_body = None
+        artifact_filename = ARTIFACTS[artifact]
+        artifact_body = self.server.read_artifact(job_id, artifact_filename)
         if artifact_body is None:
             self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
         content_type = (
             "application/json"
-            if target.suffix == ".json"
+            if artifact_filename.endswith(".json")
             else "application/vnd.recordare.musicxml+xml"
         )
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(artifact_body)))
-        self.send_header("Content-Disposition", f'attachment; filename="{target.name}"')
+        self.send_header("Content-Disposition", f'attachment; filename="{artifact_filename}"')
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(artifact_body)
 
+    def do_DELETE(self) -> None:
+        pieces = unquote(urlsplit(self.path).path).split("/")
+        if len(pieces) != 3 or pieces[1] != "artifacts" or not pieces[2]:
+            self._error(HTTPStatus.NOT_FOUND, "not_found")
+            return
+        if self.server.delete_job(pieces[2]):
+            self._json(HTTPStatus.OK, {"deleted": True})
+        else:
+            self._error(HTTPStatus.NOT_FOUND, "not_found")
 
-def create_server(host: str = "127.0.0.1", port: int = 8765) -> DemoServer:
+
+def create_server(
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    job_ttl_seconds: float = DEFAULT_JOB_TTL_SECONDS,
+) -> DemoServer:
     """Create a loopback server; callers own serving and shutdown."""
 
-    return DemoServer((host, port))
+    return DemoServer((host, port), job_ttl_seconds=job_ttl_seconds)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
