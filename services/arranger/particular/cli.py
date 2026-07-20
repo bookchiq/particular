@@ -1,4 +1,10 @@
-"""Structured deterministic command-line interface for Particular."""
+"""Structured deterministic command-line interface for Particular.
+
+Every outcome is a single JSON document: successes use ``{ok, command, data}``
+on stdout, and all failures — argument, path, preflight, and generation errors —
+use ``{ok, command, error}`` on stderr with a nonzero status. Only explicit
+``--help`` remains human-oriented, since it is a direct request for usage text.
+"""
 
 from __future__ import annotations
 
@@ -8,14 +14,43 @@ import sys
 from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from particular.application import analyze_score, generate_to_directory, load_score
+from particular.errors import classify_error
 from particular.preflight import summarize_preflight
 
 
+class CliArgumentError(Exception):
+    """An argument-parsing failure surfaced through the JSON contract."""
+
+
+class _JsonArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> NoReturn:
+        raise CliArgumentError(message)
+
+
+def _emit_error(
+    command: str | None,
+    error: BaseException,
+    *,
+    code: str | None = None,
+    type_name: str | None = None,
+) -> None:
+    payload = {
+        "ok": False,
+        "command": command,
+        "error": {
+            "type": type_name or type(error).__name__,
+            "code": code or classify_error(error).code,
+            "message": str(error),
+        },
+    }
+    print(json.dumps(payload, sort_keys=True), file=sys.stderr)
+
+
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="particular")
+    parser = _JsonArgumentParser(prog="particular")
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("preflight", "analyze"):
         command = commands.add_parser(name)
@@ -52,7 +87,11 @@ def _profile_overrides(values: Sequence[str]) -> dict[str, str]:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run a command, returning a process status and emitting one JSON document."""
 
-    arguments = _parser().parse_args(argv)
+    try:
+        arguments = _parser().parse_args(argv)
+    except CliArgumentError as error:
+        _emit_error(None, error, code="invalid_arguments", type_name="ArgumentError")
+        return 2
     try:
         if arguments.command == "preflight":
             data = _preflight(arguments.source)
@@ -74,11 +113,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(result, sort_keys=True))
         return 0
     except (OSError, ValueError) as error:
-        payload = {
-            "ok": False,
-            "error": {"type": type(error).__name__, "message": str(error)},
-        }
-        print(json.dumps(payload, sort_keys=True), file=sys.stderr)
+        _emit_error(arguments.command, error)
         return 1
 
 

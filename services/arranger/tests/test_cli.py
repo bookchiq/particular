@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from particular.cli import main
 
 ROOT = Path(__file__).parents[3]
@@ -106,3 +107,34 @@ def test_unknown_instrument_profile_override_returns_json_error(capsys: object) 
 
     error = json.loads(capsys.readouterr().err)  # type: ignore[attr-defined]
     assert error["error"]["message"] == "instrument profile override references unknown part: P99"
+
+
+def test_generate_success_uses_the_uniform_envelope(capsys: object, tmp_path: Path) -> None:
+    assert main(["generate", str(FIXTURE), str(tmp_path / "out")]) == 0
+
+    result = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert result == {
+        "ok": True,
+        "command": "generate",
+        "data": {"output": str(tmp_path / "out"), "source_sha256": result["data"]["source_sha256"]},
+    }
+
+
+@pytest.mark.parametrize("argv", [[], ["bogus"], ["generate", str(FIXTURE)]])
+def test_argument_errors_are_structured_json(capsys: object, argv: list[str]) -> None:
+    assert main(argv) == 2
+
+    error = json.loads(capsys.readouterr().err)  # type: ignore[attr-defined]
+    assert error["ok"] is False
+    assert error["command"] is None
+    assert error["error"]["code"] == "invalid_arguments"
+    assert error["error"]["type"] == "ArgumentError"
+
+
+def test_missing_source_path_is_structured_json(capsys: object, tmp_path: Path) -> None:
+    assert main(["analyze", str(tmp_path / "absent.musicxml")]) == 1
+
+    error = json.loads(capsys.readouterr().err)  # type: ignore[attr-defined]
+    assert error["ok"] is False
+    assert error["command"] == "analyze"
+    assert error["error"]["code"] == "internal_error"
