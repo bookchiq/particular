@@ -19,14 +19,32 @@ class UnsafeScoreError(ValueError):
 
 
 class ScoreSizeError(UnsafeScoreError):
-    """Input exceeds an archive size, entry-count, or decompression limit."""
+    """Input exceeds an archive entry-count, entry-size, or total-size limit."""
+
+
+class ScoreCompressionError(UnsafeScoreError):
+    """An archive entry expands at a ratio consistent with a decompression bomb."""
+
+
+class ScoreComplexityError(UnsafeScoreError):
+    """A parsed score exceeds the engine's part-count or event-count limit."""
 
 
 @dataclass(frozen=True)
 class ArchiveLimits:
-    max_files: int = 32
-    max_total_bytes: int = 8_000_000
-    max_entry_bytes: int = 4_000_000
+    """Bounded MXL extraction limits calibrated against real ensemble exports.
+
+    Reference point: an OpenScore Brandenburg movement is ~173 KB compressed and
+    expands to ~4.7 MB of MusicXML — legitimate, but rejected by the previous
+    4 MB per-entry cap. Full orchestral movements from MuseScore, Dorico,
+    Finale, Sibelius, and OpenScore reach tens of MB uncompressed while
+    compressing ~10-40x, so these limits give generous headroom while still
+    bounding memory and catching decompression bombs (which reach 1000x+).
+    """
+
+    max_files: int = 64
+    max_total_bytes: int = 80_000_000
+    max_entry_bytes: int = 64_000_000
     max_compression_ratio: float = 100.0
 
 
@@ -130,7 +148,7 @@ def extract_mxl(data: bytes, limits: ArchiveLimits = DEFAULT_ARCHIVE_LIMITS) -> 
             else:
                 ratio = entry.file_size / entry.compress_size
             if ratio > limits.max_compression_ratio:
-                raise ScoreSizeError("MXL compression ratio exceeds limit")
+                raise ScoreCompressionError("MXL compression ratio exceeds limit")
             by_path[path.as_posix()] = entry
             if path.suffix.lower() in SCORE_SUFFIXES and path.parts[0] != "META-INF":
                 fallback.append(path.as_posix())

@@ -8,7 +8,8 @@ from particular.exporters.musicxml import (
     export_musicxml,
     semantic_fingerprint,
 )
-from particular.importers.musicxml import MusicXMLParseError, parse_musicxml
+from particular.importers.musicxml import MAX_PARTS, MusicXMLParseError, parse_musicxml
+from particular.importers.security import ScoreComplexityError
 
 ROOT = Path(__file__).parents[4]
 FIXTURES = ROOT / "evaluation/fixtures"
@@ -58,6 +59,25 @@ def test_round_trips_a_mid_part_transposition_change() -> None:
     ]
     assert reparsed_transpositions == [-2, -2, 0]
     assert semantic_fingerprint(reparsed) == semantic_fingerprint(score)
+
+
+def test_rejects_scores_exceeding_the_part_limit() -> None:
+    count = MAX_PARTS + 1
+    part_list = "".join(
+        f"<score-part id='P{index}'><part-name>Viola</part-name></score-part>"
+        for index in range(count)
+    )
+    bodies = "".join(
+        f"<part id='P{index}'><measure number='1'>"
+        "<attributes><divisions>1</divisions></attributes>"
+        "<note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration></note>"
+        "</measure></part>"
+        for index in range(count)
+    )
+    xml = f"<score-partwise><part-list>{part_list}</part-list>{bodies}</score-partwise>".encode()
+
+    with pytest.raises(ScoreComplexityError):
+        parse_musicxml(xml)
 
 
 def test_pickup_measure_retains_actual_duration() -> None:

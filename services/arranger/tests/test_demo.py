@@ -154,11 +154,30 @@ def test_unsafe_archive_upload_is_sanitized(demo_server: tuple[str, int]) -> Non
 
 def test_oversized_archive_upload_is_sanitized(demo_server: tuple[str, int]) -> None:
     status, payload = _post(
-        demo_server, _mxl({f"f{index}.xml": b"x" for index in range(40)}), filename="score.mxl"
+        demo_server, _mxl({f"f{index}.xml": b"x" for index in range(65)}), filename="score.mxl"
     )
     assert status == 400
     assert payload["error"] == "oversized_file"
     assert "diagnostic_id" in payload
+
+
+def test_limits_endpoint_reports_calibrated_limits(demo_server: tuple[str, int]) -> None:
+    connection = http.client.HTTPConnection(*demo_server)
+    connection.request("GET", "/api/limits")
+    response = connection.getresponse()
+    payload = cast(dict[str, Any], json.loads(response.read()))
+    connection.close()
+
+    assert response.status == 200
+    assert {
+        "max_upload_bytes",
+        "max_expanded_total_bytes",
+        "max_expanded_entry_bytes",
+        "max_archive_entries",
+        "max_parts",
+        "max_events",
+    } <= set(payload)
+    assert payload["max_upload_bytes"] == MAX_UPLOAD_BYTES
 
 
 def test_static_page_has_accessible_review_flow() -> None:

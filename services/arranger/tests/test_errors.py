@@ -4,7 +4,12 @@ import pytest
 from particular.errors import PUBLIC_ERROR_GUIDANCE, classify_error
 from particular.exporters.musicxml import MusicXMLExportError
 from particular.importers.musicxml import MusicXMLParseError
-from particular.importers.security import ScoreSizeError, UnsafeScoreError
+from particular.importers.security import (
+    ScoreComplexityError,
+    ScoreCompressionError,
+    ScoreSizeError,
+    UnsafeScoreError,
+)
 from particular.validation.arrangement import ArrangementValidationError
 
 
@@ -15,6 +20,11 @@ from particular.validation.arrangement import ArrangementValidationError
         (MusicXMLExportError("unsupported rehearsal mark"), "unsupported_notation"),
         (UnsafeScoreError("DOCTYPE declarations are not allowed"), "unsafe_archive"),
         (ScoreSizeError("MXL total size exceeds limit"), "oversized_file"),
+        (ScoreCompressionError("MXL compression ratio exceeds limit"), "suspicious_compression"),
+        (
+            ScoreComplexityError("score exceeds complexity limits (99 parts, 5 events)"),
+            "too_complex",
+        ),
         (ArrangementValidationError("tier note counts are not monotonic"), "internal_error"),
         (ValueError("unknown instrument profile override: P9"), "invalid_request"),
         (OSError("disk full at /var/tmp/secret"), "internal_error"),

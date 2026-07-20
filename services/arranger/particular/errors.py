@@ -11,7 +11,12 @@ from dataclasses import dataclass
 
 from particular.exporters.musicxml import MusicXMLExportError
 from particular.importers.musicxml import MusicXMLParseError
-from particular.importers.security import ScoreSizeError, UnsafeScoreError
+from particular.importers.security import (
+    ScoreComplexityError,
+    ScoreCompressionError,
+    ScoreSizeError,
+    UnsafeScoreError,
+)
 from particular.validation.arrangement import ArrangementValidationError
 
 
@@ -40,6 +45,14 @@ PUBLIC_ERROR_GUIDANCE: dict[str, str] = {
         "This file is too large or expands too much to process safely. Export a "
         "smaller score or a single movement, then try again."
     ),
+    "suspicious_compression": (
+        "This file expands far more than a real score should, so it was not opened. "
+        "Re-export it from your notation software as MusicXML or .mxl."
+    ),
+    "too_complex": (
+        "This score has more parts or notes than Particular can process in the demo. "
+        "Try a single movement or a smaller ensemble."
+    ),
     "invalid_request": (
         "The request could not be processed. Check the selected instrument profiles "
         "and file type, then try again."
@@ -54,6 +67,10 @@ PUBLIC_ERROR_GUIDANCE: dict[str, str] = {
 def _code_for(error: BaseException) -> str:
     if isinstance(error, ScoreSizeError):
         return "oversized_file"
+    if isinstance(error, ScoreCompressionError):
+        return "suspicious_compression"
+    if isinstance(error, ScoreComplexityError):
+        return "too_complex"
     if isinstance(error, UnsafeScoreError):
         return "unsafe_archive"
     if isinstance(error, MusicXMLExportError):

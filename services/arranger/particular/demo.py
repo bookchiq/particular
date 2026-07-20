@@ -18,6 +18,8 @@ from urllib.parse import unquote, urlsplit
 
 from particular.application import ARTIFACT_FILENAMES, generate_to_directory
 from particular.errors import classify_error
+from particular.importers.musicxml import MAX_EVENTS, MAX_PARTS
+from particular.importers.security import DEFAULT_ARCHIVE_LIMITS
 
 # Director-friendly guidance for transport-level rejections that happen before
 # generation. Generation failures draw their guidance from classify_error.
@@ -34,8 +36,18 @@ TRANSPORT_GUIDANCE = {
     "incomplete_upload": "The upload did not finish. Check your connection and try again.",
 }
 
-MAX_UPLOAD_BYTES = 2_000_000
+MAX_UPLOAD_BYTES = 16_000_000
 MAX_JOBS = 8
+
+# Limits surfaced to the browser so a director sees them before uploading.
+PUBLIC_LIMITS = {
+    "max_upload_bytes": MAX_UPLOAD_BYTES,
+    "max_expanded_total_bytes": DEFAULT_ARCHIVE_LIMITS.max_total_bytes,
+    "max_expanded_entry_bytes": DEFAULT_ARCHIVE_LIMITS.max_entry_bytes,
+    "max_archive_entries": DEFAULT_ARCHIVE_LIMITS.max_files,
+    "max_parts": MAX_PARTS,
+    "max_events": MAX_EVENTS,
+}
 REPOSITORY_ROOT = Path(__file__).parents[3]
 PUBLIC_ROOT = REPOSITORY_ROOT / "apps/web/public"
 ARTIFACTS = ARTIFACT_FILENAMES
@@ -191,6 +203,9 @@ class DemoHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = unquote(urlsplit(self.path).path)
+        if path == "/api/limits":
+            self._json(HTTPStatus.OK, PUBLIC_LIMITS)
+            return
         if path in STATIC_FILES:
             filename, content_type = STATIC_FILES[path]
             body = (PUBLIC_ROOT / filename).read_bytes()
