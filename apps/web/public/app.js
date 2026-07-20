@@ -2,6 +2,7 @@ const form = document.querySelector("#score-form");
 const statusLine = document.querySelector("#status");
 const results = document.querySelector("#results");
 let payload;
+let profileOverrides = {};
 
 const labels = {
   pitch_range_semitones: "Range · semitones",
@@ -25,6 +26,7 @@ form.addEventListener("submit", async (event) => {
       headers: {
         "X-Particular-Filename": file.name,
         "X-Particular-Rights-Attested": "true",
+        "X-Particular-Instrument-Profiles": JSON.stringify(profileOverrides),
         "Content-Type": "application/octet-stream",
       },
       body: file,
@@ -61,7 +63,7 @@ function render() {
   document.querySelector("#difficulty").innerHTML = payload.analysis.parts
     .map(
       (part) =>
-        `<details class="part" open><summary>${escapeHtml(part.part_name)} · ${escapeHtml(part.profile_id)}</summary>${part.warning ? `<p>${escapeHtml(part.warning)}</p>` : ""}<div class="metrics">${Object.entries(
+        `<details class="part" open><summary>${escapeHtml(part.part_name)} · ${escapeHtml(part.profile_id)} (${escapeHtml(part.profile_confidence)})</summary>${part.warning ? `<p>${escapeHtml(part.warning)}</p>` : ""}${part.profile_confidence === "ambiguous" ? `<label class="profile-override">Instrument profile <select data-part-id="${escapeHtml(part.part_id)}">${payload.analysis.available_instrument_profiles.map((profileId) => `<option value="${escapeHtml(profileId)}"${profileOverrides[part.part_id] === profileId ? " selected" : ""}>${escapeHtml(profileId)}</option>`).join("")}</select></label>` : ""}<div class="metrics">${Object.entries(
           labels,
         )
           .map(
@@ -71,6 +73,13 @@ function render() {
           .join("")}</div></details>`,
     )
     .join("");
+  document.querySelectorAll("[data-part-id]").forEach((select) => {
+    select.addEventListener("change", () => {
+      profileOverrides[select.dataset.partId] = select.value;
+      statusLine.textContent =
+        "Profile selected. Create particular parts again to apply it.";
+    });
+  });
   renderChanges("Foundation");
   const names = {
     original: "Normalized original",

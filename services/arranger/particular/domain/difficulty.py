@@ -20,6 +20,7 @@ class DifficultyVector:
 class DifficultyAnalysis:
     profile_id: str
     profile_version: int
+    profile_confidence: str
     vector: DifficultyVector
     tier_targets: dict[str, float]
     warning: str | None = None

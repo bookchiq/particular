@@ -36,6 +36,12 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
     assert manifest["tiers"][0]["target"] == 0.35
     assert manifest["tiers"][2]["explanation"].startswith("Unchanged: Challenge")
     assert any(change["explanation"] for change in manifest["changes"])
+    assert manifest["part_profiles"][0] == {
+        "part_id": "P1",
+        "profile_id": "violin",
+        "profile_version": 2,
+        "profile_confidence": "declared-instrument",
+    }
 
 
 def test_preflight_and_analyze_emit_structured_json(capsys: object) -> None:
@@ -50,6 +56,12 @@ def test_preflight_and_analyze_emit_structured_json(capsys: object) -> None:
     assert analysis_output["ok"] is True
     assert analysis_output["command"] == "analyze"
     assert analysis_output["data"]["parts"][1]["profile_id"] == "violin"
+    assert analysis_output["data"]["parts"][1]["profile_confidence"] == "declared-instrument"
+
+    assert main(["analyze", str(FIXTURE), "--instrument-profile", "P1=viola"]) == 0
+    overridden_output = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert overridden_output["data"]["parts"][0]["profile_id"] == "viola"
+    assert overridden_output["data"]["parts"][0]["profile_confidence"] == "director-override"
 
 
 def test_invalid_input_leaves_no_output_and_returns_json_error(
@@ -65,3 +77,10 @@ def test_invalid_input_leaves_no_output_and_returns_json_error(
     assert error["ok"] is False
     assert error["error"]["type"] == "UnsafeScoreError"
     assert "score-partwise" not in error["error"]["message"]
+
+
+def test_unknown_instrument_profile_override_returns_json_error(capsys: object) -> None:
+    assert main(["analyze", str(FIXTURE), "--instrument-profile", "P99=violin"]) == 1
+
+    error = json.loads(capsys.readouterr().err)  # type: ignore[attr-defined]
+    assert error["error"]["message"] == "instrument profile override references unknown part: P99"

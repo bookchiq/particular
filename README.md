@@ -56,6 +56,8 @@ uv run python -m particular.cli generate evaluation/fixtures/string-orchestra-se
 
 `generate` accepts `.musicxml`, `.xml`, and safely bounded `.mxl` inputs. The output directory must not already exist. Particular publishes the normalized original, all three deterministic tiers, an analysis report, and an auditable manifest together; invalid input does not leave a partial output directory. This baseline makes no remote AI requests.
 
+The analysis report records each part's matched instrument profile and confidence. When a score's part name and declared MusicXML instrument conflict, choose the intended profile explicitly, for example `--instrument-profile P1=violin` on `analyze` or `generate`.
+
 ## Local browser demo
 
 Start the hackathon interface:

@@ -11,7 +11,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from particular.analysis.difficulty import analyze_part
+from particular.analysis.difficulty import analyze_part, instrument_profiles
 from particular.domain.score import Score
 from particular.exporters.musicxml import export_musicxml, semantic_fingerprint
 from particular.generation.selector import ArrangementFamily, generate_arrangement_family
@@ -30,6 +30,16 @@ ARTIFACT_FILENAMES = {
 }
 
 
+def _validate_profile_overrides(
+    score: Score, profile_overrides: dict[str, str] | None
+) -> dict[str, str]:
+    overrides = profile_overrides or {}
+    unknown_parts = sorted(set(overrides).difference(part.id for part in score.parts))
+    if unknown_parts:
+        raise ValueError(f"instrument profile override references unknown part: {unknown_parts[0]}")
+    return overrides
+
+
 def load_score(path: Path) -> tuple[Score, str]:
     """Load a supported source safely and return it with its immutable checksum."""
 
@@ -45,17 +55,21 @@ def load_score(path: Path) -> tuple[Score, str]:
     return parse_musicxml(xml), checksum
 
 
-def analyze_score(score: Score) -> dict[str, Any]:
+def analyze_score(score: Score, profile_overrides: dict[str, str] | None = None) -> dict[str, Any]:
     """Return a stable JSON-ready explanation of part difficulty."""
 
+    overrides = _validate_profile_overrides(score, profile_overrides)
     return {
         "engine_version": ENGINE_VERSION,
         "semantic_fingerprint": semantic_fingerprint(score),
+        "available_instrument_profiles": sorted(
+            profile_id for profile_id in instrument_profiles().profiles if profile_id != "generic"
+        ),
         "parts": [
             {
                 "part_id": part.id,
                 "part_name": part.name,
-                **asdict(analyze_part(part)),
+                **asdict(analyze_part(part, overrides.get(part.id))),
             }
             for part in score.parts
         ],
@@ -63,10 +77,14 @@ def analyze_score(score: Score) -> dict[str, Any]:
 
 
 def generation_manifest(
-    family: ArrangementFamily, source_checksum: str, source: Score
+    family: ArrangementFamily,
+    source_checksum: str,
+    source: Score,
+    profile_overrides: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build the stable, content-minimized generation audit record."""
 
+    overrides = _validate_profile_overrides(source, profile_overrides)
     changes = [asdict(change) for change in family.manifest.changes]
     operator_versions = {change.operator: 1 for change in family.manifest.changes}
     return {
@@ -75,6 +93,16 @@ def generation_manifest(
         "source_sha256": source_checksum,
         "source_semantic_fingerprint": semantic_fingerprint(source),
         "operator_versions": dict(sorted(operator_versions.items())),
+        "part_profiles": [
+            {
+                "part_id": part.id,
+                "profile_id": analysis.profile_id,
+                "profile_version": analysis.profile_version,
+                "profile_confidence": analysis.profile_confidence,
+            }
+            for part in source.parts
+            for analysis in [analyze_part(part, overrides.get(part.id))]
+        ],
         "tiers": [
             {
                 "name": tier.name,
@@ -88,16 +116,19 @@ def generation_manifest(
     }
 
 
-def generate_to_directory(source_path: Path, output_path: Path) -> dict[str, Any]:
+def generate_to_directory(
+    source_path: Path, output_path: Path, profile_overrides: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Generate and atomically publish a complete arrangement directory."""
 
     if output_path.exists():
         raise FileExistsError(f"output directory already exists: {output_path}")
     score, checksum = load_score(source_path)
-    family = generate_arrangement_family(score)
-    validate_family(score, family)
-    analysis = analyze_score(score)
-    manifest = generation_manifest(family, checksum, score)
+    overrides = _validate_profile_overrides(score, profile_overrides)
+    family = generate_arrangement_family(score, overrides)
+    validate_family(score, family, overrides)
+    analysis = analyze_score(score, overrides)
+    manifest = generation_manifest(family, checksum, score, overrides)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output_path.name}-", dir=output_path.parent))
     try:
