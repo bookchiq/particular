@@ -36,6 +36,16 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
     assert manifest["tiers"][0]["target"] == 0.35
     assert manifest["tiers"][2]["explanation"].startswith("Unchanged: Challenge")
     assert any(change["explanation"] for change in manifest["changes"])
+    sample_change = manifest["changes"][0]
+    assert {
+        "difficulty_delta",
+        "role_effects",
+        "operator_version",
+        "locators",
+    } <= set(sample_change)
+    assert isinstance(sample_change["difficulty_delta"], dict)
+    assert isinstance(sample_change["role_effects"], list)
+    assert sample_change["locators"][0]["part_id"] == sample_change["part_id"]
     assert manifest["part_profiles"][0] == {
         "part_id": "P1",
         "profile_id": "violin",

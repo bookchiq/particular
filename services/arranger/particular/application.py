@@ -86,7 +86,9 @@ def generation_manifest(
 
     overrides = _validate_profile_overrides(source, profile_overrides)
     changes = [asdict(change) for change in family.manifest.changes]
-    operator_versions = {change.operator: 1 for change in family.manifest.changes}
+    operator_versions = {
+        change.operator: change.operator_version for change in family.manifest.changes
+    }
     return {
         "engine_version": ENGINE_VERSION,
         "policy_version": family.manifest.policy_version,

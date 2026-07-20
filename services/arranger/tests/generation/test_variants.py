@@ -186,6 +186,23 @@ def test_tier_policy_uses_passage_difficulty_to_create_ordered_variants() -> Non
     validate_family(source, family)
 
 
+def test_manifest_changes_carry_deltas_roles_version_and_locators() -> None:
+    source = _tier_policy_score()
+
+    family = generate_arrangement_family(source)
+
+    accepted = [change for change in family.manifest.changes if change.status == "accepted"]
+    assert accepted
+    for change in accepted:
+        assert change.operator_version == 1
+        assert change.difficulty_delta
+        assert change.role_effects
+        assert change.locators
+        assert change.locators[0].part_id == change.part_id
+    # The new fields stay deterministic across identical runs.
+    assert generate_arrangement_family(source).manifest == family.manifest
+
+
 def test_tier_policy_explains_unchanged_below_target_passage() -> None:
     source = _score_with_repeated_notes([4, 4], forward=8)
 
