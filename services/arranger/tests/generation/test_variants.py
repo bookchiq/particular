@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from particular.analysis.difficulty import analyze_part
+from particular.application import generation_manifest
 from particular.domain.score import Score
 from particular.exporters.musicxml import export_musicxml, semantic_fingerprint
 from particular.generation.operators import adjust_octave_range, reduce_rhythm, thin_repetitions
@@ -18,6 +19,26 @@ from particular.importers.musicxml import parse_musicxml
 from particular.validation.arrangement import ArrangementValidationError, validate_family
 
 ROOT = Path(__file__).parents[4]
+
+
+def _wide_repetitive_score(part_count: int, measure_count: int) -> Score:
+    measure = (
+        "<attributes><divisions>4</divisions>"
+        "<time><beats>4</beats><beat-type>4</beat-type></time></attributes>"
+        + "<note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration>"
+        "<type>quarter</type></note>" * 4
+    )
+    measures = "".join(
+        f'<measure number="{index + 1}">{measure}</measure>' for index in range(measure_count)
+    )
+    part_list = "".join(
+        f'<score-part id="P{index + 1}"><part-name>Viola</part-name></score-part>'
+        for index in range(part_count)
+    )
+    parts = "".join(f'<part id="P{index + 1}">{measures}</part>' for index in range(part_count))
+    return parse_musicxml(
+        f"<score-partwise><part-list>{part_list}</part-list>{parts}</score-partwise>".encode()
+    )
 
 
 def _scores() -> tuple[Score, Score]:
@@ -201,6 +222,40 @@ def test_manifest_changes_carry_deltas_roles_version_and_locators() -> None:
         assert change.locators[0].part_id == change.part_id
     # The new fields stay deterministic across identical runs.
     assert generate_arrangement_family(source).manifest == family.manifest
+
+
+def test_change_summary_lists_accepted_and_aggregates_noops() -> None:
+    source = _tier_policy_score()
+
+    manifest = generation_manifest(generate_arrangement_family(source), "sha256", source)
+
+    foundation = manifest["change_summary"]["Foundation"]
+    assert foundation["accepted"]
+    sample = foundation["accepted"][0]
+    assert {
+        "difficulty_delta",
+        "role_effects",
+        "operator_version",
+        "locators",
+        "applicable",
+    } <= set(sample)
+    # No-ops are counted, not listed one record at a time.
+    assert foundation["noops"]["count"] >= 1
+    assert isinstance(foundation["noops"]["by_operator"], dict)
+
+
+def test_change_summary_stays_bounded_at_ensemble_scale() -> None:
+    source = _wide_repetitive_score(part_count=6, measure_count=12)
+    family = generate_arrangement_family(source)
+
+    manifest = generation_manifest(family, "sha256", source)
+
+    # The raw ledger is large, but the summary never grows unbounded.
+    assert len(family.manifest.changes) > 200
+    for tier in manifest["change_summary"].values():
+        assert len(tier["rejected"]) <= 50
+        assert tier["rejected_total"] >= len(tier["rejected"])
+        assert isinstance(tier["noops"]["count"], int)
 
 
 def test_tier_policy_explains_unchanged_below_target_passage() -> None:

@@ -294,6 +294,19 @@ input:focus-visible {
   font-size: 0.78rem;
   color: var(--muted);
 }
+.ledger-note {
+  margin: 0.8rem 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.declined {
+  margin-top: 0.6rem;
+}
+.declined > summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.4rem 0;
+}
 .downloads {
   display: flex;
   justify-content: space-between;
