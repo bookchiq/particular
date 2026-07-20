@@ -20,7 +20,9 @@ form.addEventListener("submit", async (event) => {
   const attested = document.querySelector("#rights-attestation").checked;
   if (!file || !attested) return;
   statusLine.textContent = "Listening closely… building coordinated parts.";
+  // A new attempt invalidates any previously shown arrangement until it succeeds.
   results.hidden = true;
+  let diagnosticRef = "";
   try {
     const response = await fetch("/api/generate", {
       method: "POST",
@@ -33,13 +35,18 @@ form.addEventListener("submit", async (event) => {
       body: file,
     });
     payload = await response.json();
-    if (!response.ok) throw new Error(payload.message || payload.error);
+    if (!response.ok) {
+      diagnosticRef = payload.diagnostic_id
+        ? ` (ref ${payload.diagnostic_id})`
+        : "";
+      throw new Error(payload.message || "Your score could not be processed.");
+    }
     render();
     statusLine.textContent = "Your arrangement family is ready for review.";
     results.hidden = false;
     results.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
-    statusLine.textContent = `Could not generate parts: ${error.message}`;
+    statusLine.textContent = `Could not generate parts: ${error.message}${diagnosticRef}`;
   }
 });
 
