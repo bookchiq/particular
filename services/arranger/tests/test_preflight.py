@@ -34,8 +34,14 @@ def test_preflight_discloses_located_lossy_notation() -> None:
 def test_preflight_reads_a_safe_mxl_archive(tmp_path: Path) -> None:
     source = ROOT / "evaluation/fixtures/mixed-ensemble-transposition.musicxml"
     archive_path = tmp_path / "fixture.mxl"
+    container = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
+        '<rootfile full-path="score.musicxml" '
+        'media-type="application/vnd.recordare.musicxml+xml"/></rootfiles></container>'
+    )
     with zipfile.ZipFile(archive_path, "w") as archive:
-        archive.writestr("META-INF/container.xml", "<container/>")
+        archive.writestr("META-INF/container.xml", container)
         archive.writestr("score.musicxml", source.read_bytes())
 
     report = preflight(archive_path)
