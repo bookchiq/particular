@@ -35,13 +35,13 @@ def _post(
     body: bytes,
     *,
     filename: str = "score.musicxml",
-    attested: bool = True,
+    rights_basis: str | None = "authorized",
     profile_overrides: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     connection = http.client.HTTPConnection(*address)
     headers = {"X-Particular-Filename": filename}
-    if attested:
-        headers["X-Particular-Rights-Attested"] = "true"
+    if rights_basis is not None:
+        headers["X-Particular-Rights-Basis"] = rights_basis
     if profile_overrides is not None:
         headers["X-Particular-Instrument-Profiles"] = json.dumps(profile_overrides)
     connection.request("POST", "/api/generate", body, headers)
@@ -52,9 +52,21 @@ def _post(
 
 
 def test_requires_rights_attestation(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes(), attested=False)
+    status, payload = _post(demo_server, FIXTURE.read_bytes(), rights_basis=None)
     assert status == 403
     assert payload["error"] == "rights_attestation_required"
+
+
+def test_rejects_unknown_rights_basis(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, FIXTURE.read_bytes(), rights_basis="whatever")
+    assert status == 403
+    assert payload["error"] == "rights_attestation_required"
+
+
+def test_records_selected_rights_basis(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, FIXTURE.read_bytes(), rights_basis="public_domain")
+    assert status == 200
+    assert payload["manifest"]["operational"]["attestation"]["basis"] == "public_domain"
 
 
 def test_valid_generation_and_allowlisted_download(demo_server: tuple[str, int]) -> None:
@@ -115,7 +127,7 @@ def test_rejects_oversize_and_unsupported_filename(demo_server: tuple[str, int])
         headers={
             "Content-Length": str(MAX_UPLOAD_BYTES + 1),
             "X-Particular-Filename": "score.musicxml",
-            "X-Particular-Rights-Attested": "true",
+            "X-Particular-Rights-Basis": "authorized",
         },
     )
     response = connection.getresponse()
@@ -183,6 +195,6 @@ def test_limits_endpoint_reports_calibrated_limits(demo_server: tuple[str, int])
 def test_static_page_has_accessible_review_flow() -> None:
     html = (ROOT / "apps/web/public/index.html").read_text()
     assert '<label for="score-file">' in html
-    assert 'id="rights-attestation"' in html
+    assert 'name="rights-basis"' in html
     assert 'aria-live="polite"' in html
     assert "Director review required" in html

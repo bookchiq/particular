@@ -22,12 +22,16 @@ def test_reproducibility_digest_is_stable_and_excludes_operational_metadata() ->
 
     first = generation_manifest(family, checksum, score, generated_at="2026-01-01T00:00:00+00:00")
     second = generation_manifest(
-        family, checksum, score, attested=True, generated_at="2026-12-31T23:59:59+00:00"
+        family,
+        checksum,
+        score,
+        rights_basis="public_domain",
+        generated_at="2026-12-31T23:59:59+00:00",
     )
 
     assert first["operational"]["generated_at"] != second["operational"]["generated_at"]
-    assert first["operational"]["rights_attested"] is False
-    assert second["operational"]["rights_attested"] is True
+    assert first["operational"]["attestation"] is None
+    assert second["operational"]["attestation"]["basis"] == "public_domain"
     # Operational metadata does not participate in the reproducibility identity.
     assert first["reproducibility_digest"] == second["reproducibility_digest"]
     assert len(first["reproducibility_digest"]) == 64
@@ -57,9 +61,29 @@ def test_profile_override_alters_reproducibility_identity() -> None:
 
 
 def test_generate_to_directory_records_operational_metadata(tmp_path: Path) -> None:
-    manifest = generate_to_directory(FIXTURE, tmp_path / "arrangement", attested=True)
+    manifest = generate_to_directory(FIXTURE, tmp_path / "arrangement", rights_basis="authorized")
 
-    assert manifest["operational"]["rights_attested"] is True
-    assert manifest["operational"]["generated_at"]
+    attestation = manifest["operational"]["attestation"]
+    assert attestation["basis"] == "authorized"
+    assert attestation["schema_version"] == 1
+    assert attestation["attested_at"] == manifest["operational"]["generated_at"]
     assert manifest["operational"]["engine_build"] == "development"
     assert manifest["reproducibility"]["engine_version"] == manifest["engine_version"]
+
+
+@pytest.mark.parametrize("basis", ["original", "public_domain", "authorized"])
+def test_attestation_records_each_basis(basis: str) -> None:
+    family, checksum, score = _family_and_source()
+
+    attestation = generation_manifest(family, checksum, score, rights_basis=basis)["operational"][
+        "attestation"
+    ]
+
+    assert attestation == {"schema_version": 1, "basis": basis, "attested_at": None}
+
+
+def test_unknown_rights_basis_is_rejected() -> None:
+    family, checksum, score = _family_and_source()
+
+    with pytest.raises(ValueError, match="unknown rights basis"):
+        generation_manifest(family, checksum, score, rights_basis="i-promise")

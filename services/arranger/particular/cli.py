@@ -16,7 +16,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, NoReturn
 
-from particular.application import analyze_score, generate_to_directory, load_score
+from particular.application import RIGHTS_BASES, analyze_score, generate_to_directory, load_score
 from particular.errors import classify_error
 from particular.preflight import summarize_preflight
 
@@ -62,9 +62,9 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("output", type=Path)
     generate.add_argument("--instrument-profile", action="append", default=[])
     generate.add_argument(
-        "--attest",
-        action="store_true",
-        help="record that you are authorized to arrange this score",
+        "--rights-basis",
+        choices=RIGHTS_BASES,
+        help="record the basis on which you are authorized to arrange this score",
     )
     return parser
 
@@ -103,7 +103,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 arguments.source,
                 arguments.output,
                 _profile_overrides(arguments.instrument_profile),
-                attested=arguments.attest,
+                rights_basis=arguments.rights_basis,
             )
             data = {
                 "output": str(arguments.output),
