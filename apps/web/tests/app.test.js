@@ -22,6 +22,7 @@ function successPayload(overrides = {}) {
         {
           part_id: "P1",
           part_name: overrides.partName ?? "Violin",
+          measures: ["1", "2"],
           profile_id: "violin",
           profile_confidence: "declared-instrument",
           warning: null,
@@ -260,6 +261,38 @@ describe("director review UI", () => {
     expect(tabs[0].getAttribute("aria-selected")).toBe("true");
     press("ArrowLeft");
     expect(tabs[2].getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("renders a per-part measure map and locates changes by tier", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    // One measure cell per measure of each part.
+    expect(document.querySelectorAll("#score-map .measure")).toHaveLength(2);
+    // Foundation applied nothing, so no measure is highlighted.
+    expect(
+      document.querySelectorAll("#score-map .measure.changed"),
+    ).toHaveLength(0);
+
+    // Core changes P1 measure 1.
+    const coreTab = [
+      ...document.querySelectorAll('#tier-tabs [role="tab"]'),
+    ].find((tab) => tab.textContent === "Core");
+    coreTab.click();
+    const changed = document.querySelectorAll("#score-map .measure.changed");
+    expect(changed).toHaveLength(1);
+    expect(changed[0].dataset.measure).toBe("1");
+
+    // Selecting the changed measure explains what happened.
+    changed[0].click();
+    expect(document.querySelector("#score-map-detail").textContent).toContain(
+      "Two adjacent notes merged",
+    );
   });
 
   it("moves focus to the results heading after generation", async () => {

@@ -107,6 +107,18 @@
           role="tablist"
           aria-label="Arrangement tier"
         ></div>
+        <section
+          class="panel score-map-panel"
+          aria-labelledby="score-map-title"
+        >
+          <h3 id="score-map-title">Score map</h3>
+          <p class="score-map-hint">
+            Each cell is a measure. Highlighted measures changed in this tier;
+            select one to see what happened.
+          </p>
+          <div id="score-map"></div>
+          <div id="score-map-detail" aria-live="polite"></div>
+        </section>
         <div class="result-grid">
           <section class="panel" aria-labelledby="difficulty-title">
             <h3 id="difficulty-title">Part difficulty</h3>

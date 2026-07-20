@@ -126,6 +126,70 @@ function selectTier(tier, { focus }) {
   const panel = document.querySelector("#changes");
   if (panel) panel.setAttribute("aria-labelledby", `tier-tab-${tier}`);
   renderChanges(tier);
+  renderScoreMap(tier);
+}
+
+// Index a tier's changes by part and measure so the score map can locate them.
+function changesByMeasure(tier) {
+  const summary = (payload.manifest.change_summary || {})[tier] || {
+    accepted: [],
+    rejected: [],
+  };
+  const located = {};
+  const add = (list, kind) =>
+    list.forEach((change) => {
+      const key = `${change.part_id}|${change.measure}`;
+      (located[key] ||= { accepted: [], rejected: [] })[kind].push(change);
+    });
+  add(summary.accepted, "accepted");
+  add(summary.rejected, "rejected");
+  return located;
+}
+
+function renderScoreMap(tier) {
+  const container = document.querySelector("#score-map");
+  if (!container) return;
+  const located = changesByMeasure(tier);
+  container.innerHTML = payload.analysis.parts
+    .map((part) => {
+      const cells = (part.measures || [])
+        .map((measure) => {
+          const at = located[`${part.part_id}|${measure}`];
+          const state = at?.accepted.length
+            ? "changed"
+            : at?.rejected.length
+              ? "declined"
+              : "unchanged";
+          const label =
+            state === "changed"
+              ? "changed"
+              : state === "declined"
+                ? "declined candidate"
+                : "unchanged";
+          return `<button type="button" class="measure ${state}" data-part="${escapeHtml(part.part_id)}" data-measure="${escapeHtml(measure)}" aria-label="${escapeHtml(part.part_name)} measure ${escapeHtml(measure)}: ${label}">${escapeHtml(measure)}</button>`;
+        })
+        .join("");
+      return `<div class="score-map-part"><span class="score-map-name">${escapeHtml(part.part_name)}</span><div class="measure-row">${cells}</div></div>`;
+    })
+    .join("");
+  container.querySelectorAll(".measure").forEach((cell) => {
+    cell.addEventListener("click", () =>
+      showMeasureDetail(cell.dataset.part, cell.dataset.measure, tier),
+    );
+  });
+  document.querySelector("#score-map-detail").innerHTML = "";
+}
+
+function showMeasureDetail(partId, measure, tier) {
+  const at = changesByMeasure(tier)[`${partId}|${measure}`];
+  const detail = document.querySelector("#score-map-detail");
+  if (!at) {
+    detail.innerHTML = `<p class="ledger-note">Measure ${escapeHtml(measure)}: unchanged in ${escapeHtml(tier)}.</p>`;
+    return;
+  }
+  detail.innerHTML = [...at.accepted, ...at.rejected]
+    .map(changeArticle)
+    .join("");
 }
 
 function onTablistKeydown(event) {
