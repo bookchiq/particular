@@ -26,6 +26,11 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("source", type=Path)
     generate.add_argument("output", type=Path)
     generate.add_argument("--instrument-profile", action="append", default=[])
+    generate.add_argument(
+        "--attest",
+        action="store_true",
+        help="record that you are authorized to arrange this score",
+    )
     return parser
 
 
@@ -59,6 +64,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 arguments.source,
                 arguments.output,
                 _profile_overrides(arguments.instrument_profile),
+                attested=arguments.attest,
             )
             data = {
                 "output": str(arguments.output),
