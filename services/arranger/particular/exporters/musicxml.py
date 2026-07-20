@@ -60,6 +60,7 @@ def export_musicxml(score: Score) -> bytes:
         ET.SubElement(score_part, "part-name").text = part.name
     for part in score.parts:
         part_element = ET.SubElement(root, "part", {"id": part.id})
+        previous_transpose = (0, 0)
         for measure in part.measures:
             attributes = {"number": measure.number}
             if measure.implicit:
@@ -75,11 +76,16 @@ def export_musicxml(score: Score) -> bytes:
             time = ET.SubElement(score_attributes, "time")
             ET.SubElement(time, "beats").text = str(measure.beats)
             ET.SubElement(time, "beat-type").text = str(measure.beat_type)
-            if part.chromatic_transposition or part.diatonic_transposition:
+            # Transposition persists until redeclared, so emit it only where it
+            # changes — including an explicit reset to concert pitch — so a
+            # mid-part instrument change survives the round trip.
+            current_transpose = (measure.chromatic_transposition, measure.diatonic_transposition)
+            if current_transpose != previous_transpose:
                 transpose = ET.SubElement(score_attributes, "transpose")
-                if part.diatonic_transposition:
-                    ET.SubElement(transpose, "diatonic").text = str(part.diatonic_transposition)
-                ET.SubElement(transpose, "chromatic").text = str(part.chromatic_transposition)
+                if measure.diatonic_transposition:
+                    ET.SubElement(transpose, "diatonic").text = str(measure.diatonic_transposition)
+                ET.SubElement(transpose, "chromatic").text = str(measure.chromatic_transposition)
+                previous_transpose = current_transpose
             if measure.clef_sign is not None:
                 clef = ET.SubElement(score_attributes, "clef")
                 ET.SubElement(clef, "sign").text = measure.clef_sign
@@ -156,6 +162,10 @@ def semantic_fingerprint(score: Score) -> str:
                         "time": [measure.beats, measure.beat_type],
                         "key": [measure.key_fifths, measure.key_mode],
                         "clef": [measure.clef_sign, measure.clef_line],
+                        "transpose": [
+                            measure.chromatic_transposition,
+                            measure.diatonic_transposition,
+                        ],
                         "directions": [
                             [item.words, item.tempo, item.placement] for item in measure.directions
                         ],

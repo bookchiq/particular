@@ -59,6 +59,8 @@ class Measure:
     clef_sign: str | None = None
     clef_line: int | None = None
     directions: tuple[Direction, ...] = ()
+    chromatic_transposition: int = 0
+    diatonic_transposition: int = 0
 
 
 @dataclass(frozen=True)

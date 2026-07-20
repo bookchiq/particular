@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from particular.exporters.musicxml import MusicXMLExportError, export_musicxml
+from particular.exporters.musicxml import (
+    MusicXMLExportError,
+    export_musicxml,
+    semantic_fingerprint,
+)
 from particular.importers.musicxml import MusicXMLParseError, parse_musicxml
 
 ROOT = Path(__file__).parents[4]
@@ -20,6 +24,40 @@ def test_parses_parts_locators_and_transposition() -> None:
     assert clarinet.measures[0].events[0].sounding_pitch == 62
     assert clarinet.measures[0].events[0].locator.part_id == "P2"
     assert clarinet.measures[0].events[0].locator.measure_number == "1"
+
+
+def test_round_trips_a_mid_part_transposition_change() -> None:
+    # A B-flat instrument (transpose -2) that switches to concert pitch mid-part.
+    xml = (
+        b"<score-partwise version='4.0'><part-list><score-part id='P1'>"
+        b"<part-name>Doubler</part-name></score-part></part-list><part id='P1'>"
+        b"<measure number='1'><attributes><divisions>1</divisions>"
+        b"<time><beats>4</beats><beat-type>4</beat-type></time>"
+        b"<transpose><chromatic>-2</chromatic></transpose></attributes>"
+        b"<note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration>"
+        b"<voice>1</voice></note></measure>"
+        b"<measure number='2'><note><pitch><step>E</step><octave>4</octave></pitch>"
+        b"<duration>4</duration><voice>1</voice></note></measure>"
+        b"<measure number='3'><attributes>"
+        b"<transpose><chromatic>0</chromatic></transpose></attributes>"
+        b"<note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration>"
+        b"<voice>1</voice></note></measure></part></score-partwise>"
+    )
+
+    score = parse_musicxml(xml)
+    measures = score.parts[0].measures
+
+    # Transposition is time-varying state, applied to sounding pitch per measure.
+    assert [measure.chromatic_transposition for measure in measures] == [-2, -2, 0]
+    assert [measure.events[0].sounding_pitch for measure in measures] == [62, 62, 64]
+
+    # The change is preserved on export and re-import without semantic drift.
+    reparsed = parse_musicxml(export_musicxml(score))
+    reparsed_transpositions = [
+        measure.chromatic_transposition for measure in reparsed.parts[0].measures
+    ]
+    assert reparsed_transpositions == [-2, -2, 0]
+    assert semantic_fingerprint(reparsed) == semantic_fingerprint(score)
 
 
 def test_pickup_measure_retains_actual_duration() -> None:

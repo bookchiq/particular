@@ -410,6 +410,8 @@ def parse_musicxml(data: bytes) -> Score:
                     clef_sign=clef_sign,
                     clef_line=clef_line,
                     directions=tuple(directions),
+                    chromatic_transposition=transpose,
+                    diatonic_transposition=diatonic_transpose,
                 )
             )
         parts.append(
