@@ -123,7 +123,8 @@ class DemoHandler(BaseHTTPRequestHandler):
             source = job_root / f"source{Path(filename).suffix.casefold()}"
             source.write_bytes(contents)
             output = job_root / "artifacts"
-            generate_to_directory(source, output, self._profile_overrides())
+            # The uploader passed the rights-attestation gate above.
+            generate_to_directory(source, output, self._profile_overrides(), attested=True)
             manifest = json.loads((output / ARTIFACTS["manifest"]).read_text())
             analysis = json.loads((output / ARTIFACTS["analysis"]).read_text())
         except (OSError, ValueError) as error:

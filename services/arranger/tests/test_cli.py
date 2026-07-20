@@ -46,12 +46,24 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
     assert isinstance(sample_change["difficulty_delta"], dict)
     assert isinstance(sample_change["role_effects"], list)
     assert sample_change["locators"][0]["part_id"] == sample_change["part_id"]
+    assert len(manifest["reproducibility_digest"]) == 64
+    assert manifest["reproducibility"]["engine_version"] == manifest["engine_version"]
+    assert manifest["operational"]["rights_attested"] is False
     assert manifest["part_profiles"][0] == {
         "part_id": "P1",
         "profile_id": "violin",
         "profile_version": 2,
         "profile_confidence": "declared-instrument",
     }
+
+
+def test_generate_records_rights_attestation(tmp_path: Path) -> None:
+    output = tmp_path / "attested"
+
+    assert main(["generate", str(FIXTURE), str(output), "--attest"]) == 0
+
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["operational"]["rights_attested"] is True
 
 
 def test_preflight_and_analyze_emit_structured_json(capsys: object) -> None:

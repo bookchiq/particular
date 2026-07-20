@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import os
 import shutil
 import tempfile
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +21,19 @@ from particular.importers.musicxml import parse_musicxml
 from particular.importers.security import extract_mxl
 from particular.validation.arrangement import validate_family
 
-ENGINE_VERSION = "0.0.0"
+
+def _engine_version() -> str:
+    try:
+        return importlib.metadata.version("particular-arranger")
+    except importlib.metadata.PackageNotFoundError:
+        return "0.0.0+unknown"
+
+
+# The installed package version; a build/commit identifier set at deploy time is
+# recorded separately as operational metadata.
+ENGINE_VERSION = _engine_version()
+# Version of the normalized-score representation the engine analyzes and exports.
+NORMALIZED_SCHEMA_VERSION = 1
 ARTIFACT_FILENAMES = {
     "original": "original-normalized.musicxml",
     "foundation": "foundation.musicxml",
@@ -81,20 +95,49 @@ def generation_manifest(
     source_checksum: str,
     source: Score,
     profile_overrides: dict[str, str] | None = None,
+    attested: bool = False,
+    generated_at: str | None = None,
 ) -> dict[str, Any]:
-    """Build the stable, content-minimized generation audit record."""
+    """Build the stable, content-minimized generation audit record.
+
+    The ``reproducibility`` block holds every input that determines the output,
+    condensed into ``reproducibility_digest``; ``operational`` metadata (build
+    identity, timestamp, rights attestation) is recorded but never affects it.
+    """
 
     overrides = _validate_profile_overrides(source, profile_overrides)
     changes = [asdict(change) for change in family.manifest.changes]
-    operator_versions = {
-        change.operator: change.operator_version for change in family.manifest.changes
+    operator_versions = dict(
+        sorted((change.operator, change.operator_version) for change in family.manifest.changes)
+    )
+    source_fingerprint = semantic_fingerprint(source)
+    reproducibility = {
+        "engine_version": ENGINE_VERSION,
+        "normalized_schema_version": NORMALIZED_SCHEMA_VERSION,
+        "source_sha256": source_checksum,
+        "source_semantic_fingerprint": source_fingerprint,
+        "instrument_profile_version": instrument_profiles().version,
+        "tier_policy_version": family.manifest.policy_version,
+        "operator_versions": operator_versions,
+        "instrument_profile_overrides": dict(sorted(overrides.items())),
+        "seed": None,
     }
+    reproducibility_digest = hashlib.sha256(
+        json.dumps(reproducibility, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
     return {
         "engine_version": ENGINE_VERSION,
         "policy_version": family.manifest.policy_version,
         "source_sha256": source_checksum,
-        "source_semantic_fingerprint": semantic_fingerprint(source),
-        "operator_versions": dict(sorted(operator_versions.items())),
+        "source_semantic_fingerprint": source_fingerprint,
+        "operator_versions": operator_versions,
+        "reproducibility": reproducibility,
+        "reproducibility_digest": reproducibility_digest,
+        "operational": {
+            "engine_build": os.environ.get("PARTICULAR_BUILD", "development"),
+            "generated_at": generated_at,
+            "rights_attested": bool(attested),
+        },
         "part_profiles": [
             {
                 "part_id": part.id,
@@ -119,7 +162,10 @@ def generation_manifest(
 
 
 def generate_to_directory(
-    source_path: Path, output_path: Path, profile_overrides: dict[str, str] | None = None
+    source_path: Path,
+    output_path: Path,
+    profile_overrides: dict[str, str] | None = None,
+    attested: bool = False,
 ) -> dict[str, Any]:
     """Generate and atomically publish a complete arrangement directory."""
 
@@ -130,7 +176,10 @@ def generate_to_directory(
     family = generate_arrangement_family(score, overrides)
     validate_family(score, family, overrides)
     analysis = analyze_score(score, overrides)
-    manifest = generation_manifest(family, checksum, score, overrides)
+    generated_at = datetime.now(UTC).isoformat()
+    manifest = generation_manifest(
+        family, checksum, score, overrides, attested=attested, generated_at=generated_at
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output_path.name}-", dir=output_path.parent))
     try:
