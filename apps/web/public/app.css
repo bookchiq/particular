@@ -202,6 +202,11 @@ input:focus-visible {
 .section-heading {
   margin: 5rem 0 2rem;
 }
+.source-name {
+  margin: 0.5rem 0 0;
+  font-weight: 700;
+  color: var(--muted);
+}
 .tier-tabs {
   display: flex;
   gap: 0.5rem;
