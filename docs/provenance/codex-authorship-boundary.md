@@ -21,13 +21,13 @@ with Claude (Anthropic), and must be attributed that way.
 
 ## The boundary
 
-| Item | Value |
-|---|---|
-| Boundary commit | `4fd0e5a8d03e8bdad9ad2cd39b3b6634b5595f1c` |
-| Commit subject | `wip: when codex ran out of credits... again` |
-| Committed | 2026-07-20 11:47:39 -0700 |
-| Branch | `fix/sustained-role-analysis` (pushed to `origin`; local and remote identical) |
-| Last *complete* Codex unit | Issue #8 → PR #33, commit `3e051ac4f5783207431ca8665be75b671034f5b5` (merged 2026-07-20) |
+| Item                       | Value                                                                                    |
+| -------------------------- | ---------------------------------------------------------------------------------------- |
+| Boundary commit            | `4fd0e5a8d03e8bdad9ad2cd39b3b6634b5595f1c`                                               |
+| Commit subject             | `wip: when codex ran out of credits... again`                                            |
+| Committed                  | 2026-07-20 11:47:39 -0700                                                                |
+| Branch                     | `fix/sustained-role-analysis` (pushed to `origin`; local and remote identical)           |
+| Last _complete_ Codex unit | Issue #8 → PR #33, commit `3e051ac4f5783207431ca8665be75b671034f5b5` (merged 2026-07-20) |
 
 Everything reachable from `4fd0e5a` is Codex. The first non-Codex change is
 whatever is committed on top of it.
