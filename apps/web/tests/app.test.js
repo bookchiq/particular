@@ -874,6 +874,33 @@ describe("director review UI", () => {
     );
   });
 
+  it("enables a seekable playhead with a time readout during audition", async () => {
+    const audio = installAudio();
+    installFetch([jsonResponse(true, successPayload())]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    const seek = document.querySelector("#audition-seek");
+    const time = document.querySelector("#audition-time");
+    expect(seek.disabled).toBe(true); // disabled until playback starts
+
+    document.querySelector("#play").click();
+    await vi.waitFor(() => expect(audio.oscillators).toBeGreaterThan(0));
+    expect(seek.disabled).toBe(false);
+    expect(time.textContent).toContain("/");
+
+    // Dragging the seek bar reschedules playback from the new position.
+    const before = audio.oscillators;
+    seek.value = "50";
+    seek.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(audio.oscillators).toBeGreaterThanOrEqual(before);
+    expect(time.textContent).toContain("/");
+  });
+
   it("shows the PDF fallback note when MuseScore is unavailable", async () => {
     installFetch([jsonResponse(true, successPayload())]);
     await loadApp();

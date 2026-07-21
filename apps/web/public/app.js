@@ -77,22 +77,46 @@ async function engraveTier(tier) {
 }
 
 // Playback state: a lazily-created AudioContext, the oscillators currently
-// scheduled, an auto-stop timer, and whether audio is playing.
+// scheduled, an auto-stop timer, a playhead-animation handle, plus — for the
+// seekable playhead — the cached selection, its total length, and where the
+// next play starts.
 let audioContext = null;
 let activeOscillators = [];
 let playbackTimer = null;
+let playbackRaf = null;
 let playing = false;
+let playbackBase = 0; // audioContext time that maps to piece time 0
+let playbackTotal = 0; // full length of the current selection (seconds)
+let playbackParts = []; // cached notes for the current selection
+let seekStart = 0; // where the next play (or a paused seek) begins
 
 function audioContextClass() {
   return window.AudioContext || window.webkitAudioContext;
 }
 
-function stopPlayback() {
-  playing = false;
+function formatTime(seconds) {
+  const whole = Math.max(0, Math.round(seconds));
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
+
+function updateSeek(elapsed) {
+  const seek = document.querySelector("#audition-seek");
+  const time = document.querySelector("#audition-time");
+  const at = Math.min(Math.max(elapsed, 0), playbackTotal);
+  if (seek) seek.value = playbackTotal ? (at / playbackTotal) * 100 : 0;
+  if (time)
+    time.textContent = `${formatTime(at)} / ${formatTime(playbackTotal)}`;
+}
+
+function clearScheduled() {
   if (playbackTimer) {
     clearTimeout(playbackTimer);
     playbackTimer = null;
   }
+  if (playbackRaf !== null && typeof cancelAnimationFrame === "function") {
+    cancelAnimationFrame(playbackRaf);
+  }
+  playbackRaf = null;
   for (const oscillator of activeOscillators) {
     try {
       oscillator.stop();
@@ -101,6 +125,13 @@ function stopPlayback() {
     }
   }
   activeOscillators = [];
+}
+
+function stopPlayback() {
+  playing = false;
+  clearScheduled();
+  seekStart = 0;
+  updateSeek(0);
   const play = document.querySelector("#play");
   if (play) play.textContent = "Play";
 }
@@ -123,6 +154,50 @@ function scheduleNote(context, note, baseTime) {
   activeOscillators.push(oscillator);
 }
 
+// Advance the playhead while audio plays. Finishing is handled by the auto-stop
+// timer, so this only moves the indicator (and stays quiet where the environment
+// has no animation frames, e.g. in tests).
+function trackProgress() {
+  if (!playing || !audioContext) return;
+  updateSeek(audioContext.currentTime - playbackBase);
+  if (typeof requestAnimationFrame === "function") {
+    playbackRaf = requestAnimationFrame(trackProgress);
+  }
+}
+
+// Schedule the cached selection from `offset` seconds in, then start the
+// auto-stop timer and the playhead. Notes already past the offset are skipped;
+// a note straddling it is clipped to begin at the offset.
+function scheduleFrom(offset) {
+  const base = audioContext.currentTime + 0.06;
+  playbackBase = base - offset;
+  for (const part of playbackParts) {
+    for (const note of part.notes) {
+      const noteEnd = note.start + note.duration;
+      if (noteEnd <= offset) continue;
+      const start = Math.max(note.start, offset);
+      scheduleNote(
+        audioContext,
+        { midi: note.midi, start: start - offset, duration: noteEnd - start },
+        base,
+      );
+    }
+  }
+  updateSeek(offset);
+  playbackTimer = setTimeout(
+    () => {
+      if (playing) {
+        stopPlayback();
+        document.querySelector("#playback-status").textContent = "Finished.";
+      }
+    },
+    (playbackTotal - offset + 0.3) * 1000,
+  );
+  if (typeof requestAnimationFrame === "function") {
+    playbackRaf = requestAnimationFrame(trackProgress);
+  }
+}
+
 async function startPlayback() {
   const status = document.querySelector("#playback-status");
   const Ctor = audioContextClass();
@@ -141,36 +216,28 @@ async function startPlayback() {
     const timeline = await (await fetch(sourceSelect.value)).json();
     if (!audioContext) audioContext = new Ctor();
     if (audioContext.resume) audioContext.resume();
-    const base = audioContext.currentTime + 0.06;
-    let end = 0;
-    const parts = timeline.parts.filter(
+    playbackParts = timeline.parts.filter(
       (part) => partId === "all" || part.part_id === partId,
     );
-    for (const part of parts) {
+    playbackTotal = 0;
+    for (const part of playbackParts) {
       for (const note of part.notes) {
-        scheduleNote(audioContext, note, base);
-        end = Math.max(end, note.start + note.duration);
+        playbackTotal = Math.max(playbackTotal, note.start + note.duration);
       }
     }
-    if (end === 0) {
+    if (playbackTotal === 0) {
       status.textContent = "This selection has no notes to play.";
       return;
     }
+    const seek = document.querySelector("#audition-seek");
+    if (seek) seek.disabled = false;
     playing = true;
     document.querySelector("#play").textContent = "Stop";
     status.textContent =
       partId === "all"
         ? `Playing ${sourceLabel}.`
         : `Playing ${sourceLabel} · ${partLabel}.`;
-    playbackTimer = setTimeout(
-      () => {
-        if (playing) {
-          stopPlayback();
-          status.textContent = "Finished.";
-        }
-      },
-      (end + 0.3) * 1000,
-    );
+    scheduleFrom(seekStart < playbackTotal ? seekStart : 0);
   } catch {
     stopPlayback();
     status.textContent = "Couldn’t play this arrangement. Try again.";
@@ -212,6 +279,29 @@ function renderAudition() {
       )
       .join("");
   play.onclick = togglePlayback;
+  const seek = document.querySelector("#audition-seek");
+  if (seek) {
+    seek.oninput = () => {
+      if (!playbackTotal) return;
+      const offset = (Number(seek.value) / 100) * playbackTotal;
+      seekStart = offset;
+      updateSeek(offset);
+      // While playing, jump there now by rescheduling from the offset.
+      if (playing) {
+        clearScheduled();
+        scheduleFrom(offset);
+      }
+    };
+  }
+  // A different source or part is a different piece — reset the playhead.
+  const resetPlayhead = () => {
+    if (playing) stopPlayback();
+    seekStart = 0;
+    playbackTotal = 0;
+    updateSeek(0);
+  };
+  sourceSelect.onchange = resetPlayhead;
+  partSelect.onchange = resetPlayhead;
 }
 
 // Show print-ready PDF downloads when the server has MuseScore, or the explicit
