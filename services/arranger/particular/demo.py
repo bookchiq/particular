@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import ipaddress
 import json
 import os
@@ -19,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from particular.application import (
     ARTIFACT_FILENAMES,
@@ -118,6 +120,7 @@ def _load_sample(filename: str) -> bytes | None:
 class _Job:
     output: Path
     created: float
+    owner: str
 
 
 class DemoServer(ThreadingHTTPServer):
@@ -130,6 +133,9 @@ class DemoServer(ThreadingHTTPServer):
         self.jobs: dict[str, _Job] = {}
         self.jobs_lock = threading.Lock()
         self.job_ttl_seconds = job_ttl_seconds
+        # Per-instance key for signing session principals and artifact tokens.
+        # A fresh key each run means URLs and cookies never outlive the process.
+        self._secret = secrets.token_bytes(32)
         self._stop = threading.Event()
         try:
             super().__init__(address, DemoHandler)
@@ -160,39 +166,76 @@ class DemoServer(ThreadingHTTPServer):
         with self.jobs_lock:
             self._purge_locked()
 
-    def register_job(self, job_id: str, output: Path) -> None:
+    def register_job(self, job_id: str, output: Path, owner: str) -> None:
         """Register an artifact directory, purge expired jobs, and cap the count."""
 
         with self.jobs_lock:
             self._purge_locked()
-            self.jobs[job_id] = _Job(output, time.monotonic())
+            self.jobs[job_id] = _Job(output, time.monotonic(), owner)
             while len(self.jobs) > MAX_JOBS:
                 oldest_job_id = next(iter(self.jobs))
                 expired = self.jobs.pop(oldest_job_id)
                 shutil.rmtree(expired.output.parent, ignore_errors=True)
 
-    def delete_job(self, job_id: str) -> bool:
-        """Explicitly remove a job's artifacts; returns whether it existed."""
+    def delete_job(self, job_id: str, owner: str | None) -> bool:
+        """Remove a job's artifacts if ``owner`` owns it; else report it absent."""
 
         with self.jobs_lock:
-            job = self.jobs.pop(job_id, None)
-            if job is None:
+            job = self.jobs.get(job_id)
+            if job is None or owner is None or job.owner != owner:
                 return False
+            del self.jobs[job_id]
             shutil.rmtree(job.output.parent, ignore_errors=True)
             return True
 
-    def read_artifact(self, job_id: str, artifact_filename: str) -> bytes | None:
-        """Purge expired jobs, then read an artifact atomically under the lock."""
+    def read_artifact(self, job_id: str, artifact_filename: str, owner: str) -> bytes | None:
+        """Purge expired jobs, then read an owned artifact atomically under the lock."""
 
         with self.jobs_lock:
             self._purge_locked()
             job = self.jobs.get(job_id)
-            if job is None:
+            if job is None or job.owner != owner:
                 return None
             try:
                 return (job.output / artifact_filename).read_bytes()
             except OSError:
                 return None
+
+    def _sign(self, message: str) -> str:
+        return hmac.new(self._secret, message.encode(), hashlib.sha256).hexdigest()
+
+    def sign_principal(self, principal: str) -> str:
+        """Signed cookie value binding a session principal to this server."""
+
+        return f"{principal}.{self._sign('principal\x00' + principal)}"
+
+    def verify_principal(self, cookie_value: str) -> str | None:
+        """Return the principal from a signed cookie value, or None if invalid."""
+
+        principal, _, signature = cookie_value.partition(".")
+        if not principal or not signature:
+            return None
+        expected = self._sign("principal\x00" + principal)
+        return principal if hmac.compare_digest(signature, expected) else None
+
+    def sign_artifact(self, job_id: str, name: str, owner: str, expiry: int) -> str:
+        """Short-lived signed token authorizing one artifact for one owner."""
+
+        message = "\x00".join(("artifact", job_id, name, owner, str(expiry)))
+        return f"{expiry}.{owner}.{self._sign(message)}"
+
+    def verify_artifact(self, job_id: str, name: str, token: str) -> str | None:
+        """Return the token's owner if the signature is valid and unexpired."""
+
+        expiry_text, _, rest = token.partition(".")
+        owner, _, signature = rest.partition(".")
+        if not expiry_text.isdigit() or not owner or not signature:
+            return None
+        expiry = int(expiry_text)
+        if expiry < int(time.time()):
+            return None
+        message = "\x00".join(("artifact", job_id, name, owner, str(expiry)))
+        return owner if hmac.compare_digest(signature, self._sign(message)) else None
 
 
 class DemoHandler(BaseHTTPRequestHandler):
@@ -201,12 +244,37 @@ class DemoHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         """Avoid logging filenames, paths, or musical request metadata."""
 
+    def _principal(self, *, mint: bool) -> str | None:
+        """Resolve the acting owner from the signed session cookie.
+
+        This is the seam a managed authentication provider replaces to return the
+        authenticated user's identity. In the pilot it derives a stable per-session
+        principal from a signed cookie, minting (and setting) one on generation.
+        """
+
+        for part in self.headers.get("Cookie", "").split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == "pid":
+                principal = self.server.verify_principal(value)
+                if principal is not None:
+                    return principal
+        if not mint:
+            return None
+        principal = secrets.token_urlsafe(18)
+        self._pending_cookie = (
+            f"pid={self.server.sign_principal(principal)}; HttpOnly; SameSite=Strict; Path=/"
+        )
+        return principal
+
     def _json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, sort_keys=True).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        cookie = getattr(self, "_pending_cookie", None)
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
         self.wfile.write(body)
 
@@ -338,7 +406,16 @@ class DemoHandler(BaseHTTPRequestHandler):
             self._error(status, public.code, message=public.message, diagnostic_id=diagnostic_id)
             return
         source.unlink(missing_ok=True)
-        self.server.register_job(job_id, output)
+        principal = self._principal(mint=True)
+        assert principal is not None  # mint=True always yields a principal
+        owner: str = principal
+        self.server.register_job(job_id, output, owner)
+        expiry = int(time.time()) + int(self.server.job_ttl_seconds)
+
+        def art_url(name: str) -> str:
+            token = self.server.sign_artifact(job_id, name, owner, expiry)
+            return f"/artifacts/{job_id}/{name}?token={token}"
+
         response: dict[str, Any] = {
             "review_required": True,
             "retention": {
@@ -348,14 +425,13 @@ class DemoHandler(BaseHTTPRequestHandler):
             "job_id": job_id,
             "analysis": analysis,
             "manifest": manifest,
-            "artifacts": {key: f"/artifacts/{job_id}/{key}" for key in ARTIFACTS},
+            "artifacts": {key: art_url(key) for key in ARTIFACTS},
             "part_exports": {
                 tier: [
                     {
                         "part_id": part["part_id"],
                         "part_name": part["part_name"],
-                        "url": f"/artifacts/{job_id}/"
-                        + part_export_filename(tier, part["part_id"]),
+                        "url": art_url(part_export_filename(tier, part["part_id"])),
                     }
                     for part in analysis["parts"]
                 ]
@@ -363,7 +439,7 @@ class DemoHandler(BaseHTTPRequestHandler):
             },
             # Audition timelines: the normalized source alongside each tier.
             "playback": {
-                label: f"/artifacts/{job_id}/" + playback_filename(label)
+                label: art_url(playback_filename(label))
                 for label in ("Source", "Essential", "Supported", "Original")
             },
         }
@@ -383,7 +459,7 @@ class DemoHandler(BaseHTTPRequestHandler):
             ),
             "exports": (
                 {
-                    label: f"/artifacts/{job_id}/" + pdf_filename(label)
+                    label: art_url(pdf_filename(label))
                     for label in ("Source", "Essential", "Supported", "Original")
                 }
                 if pdf_available
@@ -395,18 +471,15 @@ class DemoHandler(BaseHTTPRequestHandler):
         if custom is not None:
             tiers_by_part = {part["part_id"]: part["tier"] for part in custom["parts"]}
             response["custom_set"] = {
-                "url": f"/artifacts/{job_id}/{MIXED_TIER_FILENAME}",
-                "playback_url": f"/artifacts/{job_id}/" + playback_filename("custom"),
-                "pdf_url": (
-                    f"/artifacts/{job_id}/" + pdf_filename("custom") if pdf_available else None
-                ),
+                "url": art_url(MIXED_TIER_FILENAME),
+                "playback_url": art_url(playback_filename("custom")),
+                "pdf_url": (art_url(pdf_filename("custom")) if pdf_available else None),
                 "part_exports": [
                     {
                         "part_id": part["part_id"],
                         "part_name": part["part_name"],
                         "tier": tiers_by_part[part["part_id"]],
-                        "url": f"/artifacts/{job_id}/"
-                        + mixed_part_export_filename(part["part_id"]),
+                        "url": art_url(mixed_part_export_filename(part["part_id"])),
                     }
                     for part in analysis["parts"]
                 ],
@@ -414,7 +487,8 @@ class DemoHandler(BaseHTTPRequestHandler):
         self._json(HTTPStatus.OK, response)
 
     def do_GET(self) -> None:
-        path = unquote(urlsplit(self.path).path)
+        split = urlsplit(self.path)
+        path = unquote(split.path)
         if path == "/api/limits":
             self._json(HTTPStatus.OK, PUBLIC_LIMITS)
             return
@@ -467,13 +541,20 @@ class DemoHandler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
         job_id, name = pieces[2], pieces[3]
+        # A valid, unexpired signature (bound to the owner) authorizes the artifact.
+        owner = self.server.verify_artifact(
+            job_id, name, parse_qs(split.query).get("token", [""])[0]
+        )
+        if owner is None:
+            self._error(HTTPStatus.NOT_FOUND, "not_found")
+            return
         # Accept a stable key (e.g. "essential") or a part-export filename; the
         # basename check keeps requests inside the job's artifact directory.
         artifact_filename = ARTIFACTS.get(name, name)
         if not artifact_filename or Path(artifact_filename).name != artifact_filename:
             self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
-        artifact_body = self.server.read_artifact(job_id, artifact_filename)
+        artifact_body = self.server.read_artifact(job_id, artifact_filename, owner)
         if artifact_body is None:
             self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
@@ -496,7 +577,8 @@ class DemoHandler(BaseHTTPRequestHandler):
         if len(pieces) != 3 or pieces[1] != "artifacts" or not pieces[2]:
             self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
-        if self.server.delete_job(pieces[2]):
+        # Only the session that created the job may delete it.
+        if self.server.delete_job(pieces[2], self._principal(mint=False)):
             self._json(HTTPStatus.OK, {"deleted": True})
         else:
             self._error(HTTPStatus.NOT_FOUND, "not_found")
