@@ -10,6 +10,7 @@ from particular.domain.score import Score
 from particular.exporters.musicxml import export_musicxml, semantic_fingerprint
 from particular.generation.operators import (
     adjust_octave_range,
+    fold_large_leaps,
     reduce_rhythm,
     thin_repetitions,
     thin_run,
@@ -99,6 +100,24 @@ def _distinct_run_score() -> Score:
         </score-part></part-list><part id="P1"><measure number="1"><attributes>
         <divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
         </attributes>{notes}</measure></part></score-partwise>""".encode()
+    )
+
+
+def _wide_leap_score() -> Score:
+    """A single part whose third note leaps well over an octave from the second."""
+
+    return parse_musicxml(
+        b"""<score-partwise><part-list><score-part id="P1"><part-name>Violin</part-name>
+        </score-part></part-list><part id="P1"><measure number="1"><attributes>
+        <divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
+        </attributes>
+        <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        <note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        <note><pitch><step>C</step><octave>6</octave></pitch><duration>8</duration>
+        <type>half</type></note>
+        </measure></part></score-partwise>"""
     )
 
 
@@ -268,6 +287,85 @@ def test_run_thin_eases_a_fast_distinct_run_in_the_easier_tiers() -> None:
     ]
     # Reduction only: the easiest tier has strictly fewer notes than the unchanged top tier.
     assert counts[0] < counts[2]
+    validate_family(source, family)
+
+
+def test_leap_fold_shrinks_over_octave_leaps_and_respects_guards() -> None:
+    events = _wide_leap_score().parts[0].measures[0].events
+
+    candidate = fold_large_leaps(events, 55, 88, frozenset())
+    assert candidate.accepted is True
+    assert candidate.operator == "leap-fold"
+    # The leaping note (C6) is folded, not the note before it.
+    assert candidate.locators == (events[2].locator,)
+    # C6 (84) drops to the C nearest E4 (64) that is still in range: C4 (60).
+    assert candidate.after[0].written_pitch == 60
+    assert candidate.after[0].pitch_step == "C"
+    assert candidate.after[0].pitch_octave == 4
+    assert candidate.difficulty_delta["largest_leap"] < 0
+    # Onset and duration are untouched (pitch-only reduction).
+    assert candidate.after[0].onset == events[2].onset
+    assert candidate.after[0].duration == events[2].duration
+
+    # A leap within an octave is left as written.
+    within_octave = (
+        events[1],
+        replace(events[2], written_pitch=67, sounding_pitch=67, pitch_step="G", pitch_octave=4),
+    )
+    calm = fold_large_leaps(within_octave, 55, 88, frozenset())
+    assert calm.accepted is False
+    assert calm.rejection_reason == "no over-octave leap to fold"
+
+    # Protected leaping notes are never folded.
+    protected = fold_large_leaps(events, 55, 88, frozenset({events[2].locator}))
+    assert protected.accepted is False
+    assert protected.rejection_reason == "protected role prevents leap folding"
+
+    # An out-of-range note is deferred to the range-safety operator.
+    deferred = fold_large_leaps(events, 55, 80, frozenset())
+    assert deferred.accepted is False
+    assert deferred.rejection_reason == "range safety handles out-of-range notes first"
+
+
+def test_leap_fold_eases_wide_leaps_in_easier_tiers_without_changing_note_count() -> None:
+    source = _wide_leap_score()
+
+    family = generate_arrangement_family(source)
+
+    accepted = {
+        (change.tier, change.operator)
+        for change in family.manifest.changes
+        if change.status == "accepted"
+    }
+    assert ("Foundation", "leap-fold") in accepted
+    assert ("Core", "leap-fold") in accepted
+    assert ("Challenge", "leap-fold") not in accepted
+
+    def widest_leap(tier_score: Score) -> int:
+        pitches = [
+            event.written_pitch
+            for part in tier_score.parts
+            for measure in part.measures
+            for event in measure.events
+            if event.written_pitch is not None
+        ]
+        return max(
+            abs(later - earlier) for earlier, later in zip(pitches, pitches[1:], strict=False)
+        )
+
+    # The easier tiers tame the leap; the top tier keeps the score as written.
+    assert widest_leap(family.tiers[0].score) < widest_leap(family.tiers[2].score)
+    counts = [
+        sum(
+            event.kind == "note" and event.written_pitch is not None
+            for part in tier.score.parts
+            for measure in part.measures
+            for event in measure.events
+        )
+        for tier in family.tiers
+    ]
+    # Folding changes pitch, never note count, so every tier has the same count.
+    assert len(set(counts)) == 1
     validate_family(source, family)
 
 

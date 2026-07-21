@@ -32,6 +32,7 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
     assert manifest["engine_version"] == "0.0.0"
     assert manifest["policy_version"] == 2
     assert set(manifest["operator_versions"]) == {
+        "leap-fold",
         "octave-range",
         "repetition-thin",
         "rhythm-merge",
