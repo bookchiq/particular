@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from particular.demo import MAX_JOBS, MAX_UPLOAD_BYTES, create_server
+from particular.demo import (
+    MAX_JOBS,
+    MAX_UPLOAD_BYTES,
+    _is_loopback_host,
+    create_server,
+)
 
 ROOT = Path(__file__).parents[3]
 FIXTURE = ROOT / "evaluation/fixtures/mixed-ensemble-transposition.musicxml"
@@ -522,3 +527,32 @@ def test_lists_and_serves_bundled_sample_scores(demo_server: tuple[str, int]) ->
 def test_rejects_unknown_sample(demo_server: tuple[str, int]) -> None:
     status, _ = _get(demo_server, "/samples/not-a-real-sample.musicxml")
     assert status == 404
+
+
+@pytest.mark.parametrize(
+    "host,loopback",
+    [
+        ("127.0.0.1", True),
+        ("localhost", True),
+        ("::1", True),
+        ("0.0.0.0", False),
+        ("", False),
+        ("192.168.1.10", False),
+    ],
+)
+def test_is_loopback_host(host: str, loopback: bool) -> None:
+    assert _is_loopback_host(host) is loopback
+
+
+def test_create_server_refuses_non_loopback_by_default() -> None:
+    # The demo has no auth, so it must not accidentally bind to a public interface.
+    with pytest.raises(ValueError, match="loopback"):
+        create_server(host="0.0.0.0", port=0)
+
+
+def test_create_server_allows_non_loopback_when_explicitly_acknowledged() -> None:
+    server = create_server(host="0.0.0.0", port=0, allow_non_loopback=True)
+    try:
+        assert cast(tuple[str, int], server.server_address)[0] == "0.0.0.0"
+    finally:
+        server.server_close()

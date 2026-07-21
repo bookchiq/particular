@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
+import os
 import secrets
 import shutil
 import sys
@@ -500,13 +502,39 @@ class DemoHandler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.NOT_FOUND, "not_found")
 
 
+def _is_loopback_host(host: str) -> bool:
+    """True only for hosts that bind to the local machine's loopback interface."""
+
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def create_server(
     host: str = "127.0.0.1",
     port: int = 8765,
     job_ttl_seconds: float = DEFAULT_JOB_TTL_SECONDS,
+    allow_non_loopback: bool = False,
 ) -> DemoServer:
-    """Create a loopback server; callers own serving and shutdown."""
+    """Create a loopback server; callers own serving and shutdown.
 
+    The demo has no authentication or per-user ownership, so it refuses to bind
+    to a non-loopback interface (anything reachable from other machines) unless a
+    production security layer is explicitly acknowledged — via ``allow_non_loopback``
+    or the ``PARTICULAR_ALLOW_NON_LOOPBACK`` environment variable. See issue #24
+    for the authentication and ownership work required before any real deployment.
+    """
+
+    permitted = allow_non_loopback or os.environ.get("PARTICULAR_ALLOW_NON_LOOPBACK") == "1"
+    if not permitted and not _is_loopback_host(host):
+        raise ValueError(
+            f"refusing to bind the demo to non-loopback host {host!r}: it has no "
+            "authentication and must stay loopback-only. Only enable non-loopback "
+            "binding behind a production security layer (see issue #24)."
+        )
     return DemoServer((host, port), job_ttl_seconds=job_ttl_seconds)
 
 
@@ -516,7 +544,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     server = create_server(port=arguments.port)
     host, port = cast(tuple[str, int], server.server_address)
-    print(json.dumps({"url": f"http://{host}:{port}", "loopback_only": True}))
+    print(json.dumps({"url": f"http://{host}:{port}", "loopback_only": _is_loopback_host(host)}))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
