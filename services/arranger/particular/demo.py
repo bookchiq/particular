@@ -86,6 +86,31 @@ STATIC_FILES = {
     "/sequencer.js": ("sequencer.js", "text/javascript; charset=utf-8"),
 }
 
+# Bundled scores a visitor can load with one click instead of supplying a file.
+# Each reads from the versioned evaluation corpus (single source of truth) and is
+# only offered because its rights basis is honest to attest.
+SAMPLE_SCORES = (
+    {
+        "id": "brandenburg-no3-mvt3",
+        "filename": "brandenburg-no3-mvt3-excerpt.musicxml",
+        "url": "/samples/brandenburg-no3-mvt3-excerpt.musicxml",
+        "title": "Brandenburg Concerto No. 3 — Mvt. 3 (mm. 1-4)",
+        "composer": "J. S. Bach",
+        "rights_basis": "public_domain",
+        "provenance": "Public domain; CC0 encoding from OpenScore/Hauptstimme v1.0.1.",
+    },
+)
+
+
+def _load_sample(filename: str) -> bytes | None:
+    """Read a bundled sample score from the package, or the corpus in dev."""
+
+    packaged = resources.files("particular").joinpath("samples", filename)
+    if packaged.is_file():
+        return packaged.read_bytes()
+    source = Path(__file__).parents[3] / "evaluation/fixtures" / filename
+    return source.read_bytes() if source.is_file() else None
+
 
 @dataclass
 class _Job:
@@ -389,6 +414,41 @@ class DemoHandler(BaseHTTPRequestHandler):
         path = unquote(urlsplit(self.path).path)
         if path == "/api/limits":
             self._json(HTTPStatus.OK, PUBLIC_LIMITS)
+            return
+        if path == "/api/samples":
+            self._json(
+                HTTPStatus.OK,
+                {
+                    "samples": [
+                        {
+                            key: sample[key]
+                            for key in (
+                                "id",
+                                "url",
+                                "title",
+                                "composer",
+                                "rights_basis",
+                                "provenance",
+                            )
+                        }
+                        for sample in SAMPLE_SCORES
+                    ]
+                },
+            )
+            return
+        if path.startswith("/samples/"):
+            name = Path(path).name
+            sample = next((item for item in SAMPLE_SCORES if item["filename"] == name), None)
+            body = _load_sample(name) if sample is not None else None
+            if body is None:
+                self._error(HTTPStatus.NOT_FOUND, "not_found")
+                return
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/vnd.recordare.musicxml+xml")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
             return
         if path in STATIC_FILES:
             filename, content_type = STATIC_FILES[path]

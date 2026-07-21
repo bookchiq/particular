@@ -590,3 +590,38 @@ footer span {
     transition: none !important;
   }
 }
+
+/* One-click sample scores under the upload card. */
+.samples {
+  margin-top: 1rem;
+}
+.samples-lead {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.sample-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+button.sample {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--cream);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  text-align: left;
+}
+button.sample span {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.samples-note {
+  margin: 0.6rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}

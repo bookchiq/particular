@@ -477,3 +477,43 @@ def test_static_page_has_accessible_review_flow() -> None:
     assert 'name="rights-basis"' in html
     assert 'aria-live="polite"' in html
     assert "Director review required" in html
+
+
+def _get(address: tuple[str, int], path: str) -> tuple[int, bytes]:
+    connection = http.client.HTTPConnection(*address)
+    connection.request("GET", path)
+    response = connection.getresponse()
+    body = response.read()
+    connection.close()
+    return response.status, body
+
+
+def test_lists_and_serves_bundled_sample_scores(demo_server: tuple[str, int]) -> None:
+    status, body = _get(demo_server, "/api/samples")
+    assert status == 200
+    samples = json.loads(body)["samples"]
+    assert samples and samples[0]["id"] == "brandenburg-no3-mvt3"
+    sample = samples[0]
+    # Only an honestly-attestable basis is offered for a bundled sample.
+    assert sample["rights_basis"] == "public_domain"
+
+    # The served bytes are exactly the corpus fixture (single source of truth).
+    status, served = _get(demo_server, sample["url"])
+    assert status == 200
+    fixture = (ROOT / "evaluation/fixtures/brandenburg-no3-mvt3-excerpt.musicxml").read_bytes()
+    assert served == fixture
+
+    # The sample regenerates through the normal generation path.
+    generate_status, payload = _post(
+        demo_server,
+        served,
+        filename="brandenburg-no3-mvt3-excerpt.musicxml",
+        rights_basis=sample["rights_basis"],
+    )
+    assert generate_status == 200
+    assert payload["job_id"]
+
+
+def test_rejects_unknown_sample(demo_server: tuple[str, int]) -> None:
+    status, _ = _get(demo_server, "/samples/not-a-real-sample.musicxml")
+    assert status == 404

@@ -318,12 +318,10 @@ async function runGeneration(file, basisValue) {
   }
 }
 
-form.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const file = document.querySelector("#score-file").files[0];
-  const basis = form.querySelector('input[name="rights-basis"]:checked');
-  if (!file || !basis) return;
-  lockedMeasures.clear(); // a new upload starts a fresh score
+// Reset per-score UI state, then generate. Shared by the upload form and the
+// one-click sample shortcuts.
+function beginGeneration(file, basisValue) {
+  lockedMeasures.clear(); // a new score starts fresh
   tierAssignments = {};
   notationOpen = false; // collapse any engraved preview from the previous score
   const notation = document.querySelector("#notation");
@@ -333,8 +331,66 @@ form.addEventListener("submit", (event) => {
   stopPlayback(); // silence any audition from the previous score
   const playbackStatus = document.querySelector("#playback-status");
   if (playbackStatus) playbackStatus.textContent = "";
-  runGeneration(file, basis.value);
+  runGeneration(file, basisValue);
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const file = document.querySelector("#score-file").files[0];
+  const basis = form.querySelector('input[name="rights-basis"]:checked');
+  if (!file || !basis) return;
+  beginGeneration(file, basis.value);
 });
+
+async function loadSample(sample, button) {
+  button.disabled = true;
+  try {
+    const response = await fetch(sample.url);
+    if (!response.ok) throw new Error("sample unavailable");
+    const name = sample.url.split("/").pop() || "sample.musicxml";
+    const file = new File([await response.blob()], name, {
+      type: "application/vnd.recordare.musicxml+xml",
+    });
+    // Reflect the sample's honestly-attestable rights basis in the controls.
+    const radio = form.querySelector(
+      `input[name="rights-basis"][value="${sample.rights_basis}"]`,
+    );
+    if (radio) radio.checked = true;
+    beginGeneration(file, sample.rights_basis);
+  } catch {
+    statusLine.textContent = "Could not load the sample score.";
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function loadSamples() {
+  const container = document.querySelector("#samples");
+  const buttons = document.querySelector("#sample-buttons");
+  if (!container || !buttons) return;
+  try {
+    const response = await fetch("/api/samples");
+    const { samples } = await response.json();
+    if (!samples || !samples.length) return;
+    buttons.innerHTML = "";
+    for (const sample of samples) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "sample";
+      const title = document.createElement("strong");
+      title.textContent = sample.title;
+      const meta = document.createElement("span");
+      meta.textContent = `${sample.composer} · ${sample.provenance}`;
+      button.append(title, meta);
+      button.addEventListener("click", () => loadSample(sample, button));
+      buttons.append(button);
+    }
+    container.hidden = false;
+  } catch {
+    // Leave the sample shortcut hidden if the endpoint is unavailable.
+  }
+}
+loadSamples();
 
 const TIERS = ["Foundation", "Core", "Challenge"];
 
