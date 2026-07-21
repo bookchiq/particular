@@ -13,6 +13,7 @@ from particular.generation.operators import (
     desyncopate,
     fold_large_leaps,
     reduce_rhythm,
+    simplify_accidentals,
     thin_repetitions,
     thin_run,
 )
@@ -141,6 +142,26 @@ def _heavily_syncopated_score() -> Score:
         <type>quarter</type></note>
         <note><pitch><step>F</step><octave>4</octave></pitch><duration>2</duration>
         <type>eighth</type></note>
+        </measure></part></score-partwise>"""
+    )
+
+
+def _accidental_score() -> Score:
+    """C major with two chromatic notes (F-sharp, G-sharp) in an inner line."""
+
+    return parse_musicxml(
+        b"""<score-partwise><part-list><score-part id="P1"><part-name>Viola</part-name>
+        </score-part></part-list><part id="P1"><measure number="1"><attributes>
+        <divisions>4</divisions><key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+        <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        <note><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        <note><pitch><step>G</step><alter>1</alter><octave>4</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
         </measure></part></score-partwise>"""
     )
 
@@ -508,6 +529,69 @@ def test_brandenburg_excerpt_shows_visible_reductions_and_round_trips() -> None:
     for tier in family.tiers:
         reparsed = parse_musicxml(export_musicxml(tier.score))
         assert semantic_fingerprint(reparsed) == semantic_fingerprint(tier.score)
+
+
+def test_simplify_accidentals_naturalizes_to_the_key_and_respects_guards() -> None:
+    events = _accidental_score().parts[0].measures[0].events  # C4, F#4, G#4, C5
+
+    candidate = simplify_accidentals(events, 0, frozenset())
+    assert candidate.accepted is True
+    assert candidate.operator == "accidental-simplify"
+    assert candidate.locators == (events[1].locator,)  # the first accidental, F#4
+    # F#4 becomes F natural: same letter and octave, alter cleared, pitch down one.
+    assert candidate.after[0].pitch_step == "F"
+    assert candidate.after[0].pitch_alter == 0
+    assert candidate.after[0].pitch_octave == 4
+    assert candidate.after[0].written_pitch == 65  # F#4 (66) -> F natural (65)
+    assert candidate.after[0].onset == events[1].onset
+    assert candidate.after[0].duration == events[1].duration
+    assert candidate.difficulty_delta == {"accidental_burden": -1.0}
+
+    # A diatonic passage has nothing to simplify.
+    diatonic = simplify_accidentals((events[0], events[3]), 0, frozenset())
+    assert diatonic.accepted is False
+    assert diatonic.rejection_reason == "no accidental to simplify"
+
+    # A protected accidental is skipped; the scan moves to the next one (G#4).
+    later = simplify_accidentals(events, 0, frozenset({events[1].locator}))
+    assert later.accepted is True
+    assert later.locators == (events[2].locator,)
+
+    both = simplify_accidentals(events, 0, frozenset({events[1].locator, events[2].locator}))
+    assert both.accepted is False
+    assert both.rejection_reason == "protected role prevents accidental simplification"
+
+    tied = (replace(events[1], tie_start=True),)
+    tied_result = simplify_accidentals(tied, 0, frozenset())
+    assert tied_result.accepted is False
+    assert tied_result.rejection_reason == "tied notes cannot be simplified safely"
+
+
+def test_simplify_accidentals_eases_chromatic_measures_in_easier_tiers() -> None:
+    source = _accidental_score()
+
+    family = generate_arrangement_family(source)
+
+    accepted = {
+        (change.tier, change.operator)
+        for change in family.manifest.changes
+        if change.status == "accepted"
+    }
+    assert ("Essential", "accidental-simplify") in accepted
+    assert ("Original", "accidental-simplify") not in accepted
+
+    # The eased tier carries fewer written accidentals than the top tier.
+    def accidentals(tier_score: Score) -> int:
+        return sum(
+            1
+            for part in tier_score.parts
+            for measure in part.measures
+            for event in measure.events
+            if event.kind == "note" and event.pitch_alter != 0
+        )
+
+    assert accidentals(family.tiers[0].score) < accidentals(family.tiers[2].score)
+    validate_family(source, family)
 
 
 def test_family_is_deterministic_synchronized_and_round_trippable() -> None:
