@@ -97,10 +97,10 @@ def _summarize_changes(changes: Any) -> dict[str, Any]:
 
 
 ARTIFACT_FILENAMES = {
-    "original": "original-normalized.musicxml",
-    "foundation": "foundation.musicxml",
-    "core": "core.musicxml",
-    "challenge": "challenge.musicxml",
+    "source": "source-normalized.musicxml",
+    "essential": "essential.musicxml",
+    "supported": "supported.musicxml",
+    "original": "original.musicxml",
     "manifest": "manifest.json",
     "analysis": "analysis.json",
 }
@@ -123,8 +123,8 @@ def mixed_part_export_filename(part_id: str) -> str:
 
 
 # Playback timelines are published per source so the browser can audition any of
-# them; "original" and "custom" join the three tiers.
-PLAYBACK_SOURCES = ("original", "foundation", "core", "challenge")
+# them; the normalized "source" and "custom" join the three tiers.
+PLAYBACK_SOURCES = ("source", "essential", "supported", "original")
 
 
 def playback_filename(source: str) -> str:
@@ -345,8 +345,8 @@ def generate_to_directory(
                 with contextlib.suppress(PdfRenderError):
                     (temporary / pdf_filename(source)).write_bytes(render_pdf(musicxml, musescore))
 
-        _write_source("original", export_musicxml(score), ARTIFACT_FILENAMES["original"])
-        _write_playback("original", score)
+        _write_source("source", export_musicxml(score), ARTIFACT_FILENAMES["source"])
+        _write_playback("source", score)
         for tier in family.tiers:
             _write_source(
                 tier.name, export_musicxml(tier.score), ARTIFACT_FILENAMES[tier.name.casefold()]

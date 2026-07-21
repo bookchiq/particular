@@ -40,11 +40,11 @@ function successPayload(overrides = {}) {
     },
     manifest: {
       change_summary: {
-        Foundation: emptyTier({ count: 2, by_operator: { "octave-range": 2 } }),
-        Core: {
+        Essential: emptyTier({ count: 2, by_operator: { "octave-range": 2 } }),
+        Supported: {
           accepted: [
             {
-              tier: "Core",
+              tier: "Supported",
               part_id: "P1",
               measure: "1",
               operator: "rhythm-merge",
@@ -61,22 +61,22 @@ function successPayload(overrides = {}) {
           rejected_total: 0,
           noops: { count: 0, by_operator: {} },
         },
-        Challenge: emptyTier({ count: 0, by_operator: {} }),
+        Original: emptyTier({ count: 0, by_operator: {} }),
       },
     },
     artifacts: {
+      source: "/artifacts/JOB123/source",
+      essential: "/artifacts/JOB123/essential",
+      supported: "/artifacts/JOB123/supported",
       original: "/artifacts/JOB123/original",
-      foundation: "/artifacts/JOB123/foundation",
-      core: "/artifacts/JOB123/core",
-      challenge: "/artifacts/JOB123/challenge",
       manifest: "/artifacts/JOB123/manifest",
       analysis: "/artifacts/JOB123/analysis",
     },
     playback: {
+      Source: "/artifacts/JOB123/source.playback.json",
+      Essential: "/artifacts/JOB123/essential.playback.json",
+      Supported: "/artifacts/JOB123/supported.playback.json",
       Original: "/artifacts/JOB123/original.playback.json",
-      Foundation: "/artifacts/JOB123/foundation.playback.json",
-      Core: "/artifacts/JOB123/core.playback.json",
-      Challenge: "/artifacts/JOB123/challenge.playback.json",
     },
     pdf: {
       available: false,
@@ -84,25 +84,25 @@ function successPayload(overrides = {}) {
       exports: {},
     },
     part_exports: {
-      Foundation: [
+      Essential: [
         {
           part_id: "P1",
           part_name: "Violin",
-          url: "/artifacts/JOB123/foundation-P1.musicxml",
+          url: "/artifacts/JOB123/essential-P1.musicxml",
         },
       ],
-      Core: [
+      Supported: [
         {
           part_id: "P1",
           part_name: "Violin",
-          url: "/artifacts/JOB123/core-P1.musicxml",
+          url: "/artifacts/JOB123/supported-P1.musicxml",
         },
       ],
-      Challenge: [
+      Original: [
         {
           part_id: "P1",
           part_name: "Violin",
-          url: "/artifacts/JOB123/challenge-P1.musicxml",
+          url: "/artifacts/JOB123/original-P1.musicxml",
         },
       ],
     },
@@ -333,14 +333,14 @@ describe("director review UI", () => {
       expect(document.querySelector("#results").hidden).toBe(false),
     );
 
-    // Foundation defaults to the no-op summary.
+    // Essential defaults to the no-op summary.
     expect(document.querySelector("#changes").textContent).toContain(
       "found no applicable change",
     );
 
     const coreTab = [
       ...document.querySelectorAll('#tier-tabs [role="tab"]'),
-    ].find((tab) => tab.textContent === "Core");
+    ].find((tab) => tab.textContent === "Supported");
     coreTab.click();
     expect(document.querySelector("#changes").textContent).toContain(
       "Two adjacent notes merged",
@@ -380,7 +380,7 @@ describe("director review UI", () => {
 
     const panel = document.querySelector("#changes");
     expect(panel.getAttribute("role")).toBe("tabpanel");
-    expect(panel.getAttribute("aria-labelledby")).toBe("tier-tab-Foundation");
+    expect(panel.getAttribute("aria-labelledby")).toBe("tier-tab-Essential");
   });
 
   it("navigates tiers with Arrow, Home, and End keys", async () => {
@@ -405,7 +405,7 @@ describe("director review UI", () => {
     expect(document.activeElement).toBe(tabs[1]);
     expect(
       document.querySelector("#changes").getAttribute("aria-labelledby"),
-    ).toBe("tier-tab-Core");
+    ).toBe("tier-tab-Supported");
 
     press("End");
     expect(tabs[2].getAttribute("aria-selected")).toBe("true");
@@ -426,15 +426,15 @@ describe("director review UI", () => {
 
     // One measure cell per measure of each part.
     expect(document.querySelectorAll("#score-map .measure")).toHaveLength(2);
-    // Foundation applied nothing, so no measure is highlighted.
+    // Essential applied nothing, so no measure is highlighted.
     expect(
       document.querySelectorAll("#score-map .measure.changed"),
     ).toHaveLength(0);
 
-    // Core changes P1 measure 1.
+    // Supported changes P1 measure 1.
     const coreTab = [
       ...document.querySelectorAll('#tier-tabs [role="tab"]'),
-    ].find((tab) => tab.textContent === "Core");
+    ].find((tab) => tab.textContent === "Supported");
     coreTab.click();
     const changed = document.querySelectorAll("#score-map .measure.changed");
     expect(changed).toHaveLength(1);
@@ -458,15 +458,15 @@ describe("director review UI", () => {
 
     expect(
       document.querySelector("#score-map .part-export").getAttribute("href"),
-    ).toBe("/artifacts/JOB123/foundation-P1.musicxml");
+    ).toBe("/artifacts/JOB123/essential-P1.musicxml");
 
     const coreTab = [
       ...document.querySelectorAll('#tier-tabs [role="tab"]'),
-    ].find((tab) => tab.textContent === "Core");
+    ].find((tab) => tab.textContent === "Supported");
     coreTab.click();
     expect(
       document.querySelector("#score-map .part-export").getAttribute("href"),
-    ).toBe("/artifacts/JOB123/core-P1.musicxml");
+    ).toBe("/artifacts/JOB123/supported-P1.musicxml");
   });
 
   it("moves focus to the results heading after generation", async () => {
@@ -515,7 +515,7 @@ describe("director review UI", () => {
       a.getAttribute("href"),
     );
     expect(hrefs).toContain("/artifacts/JOB123/manifest");
-    expect(hrefs).toContain("/artifacts/JOB123/foundation");
+    expect(hrefs).toContain("/artifacts/JOB123/essential");
   });
 
   it("disables the submit button while a request is in flight", async () => {
@@ -569,7 +569,7 @@ describe("director review UI", () => {
     // The lock survives switching tiers.
     const coreTab = [
       ...document.querySelectorAll('#tier-tabs [role="tab"]'),
-    ].find((tab) => tab.textContent === "Core");
+    ].find((tab) => tab.textContent === "Supported");
     coreTab.click();
     expect(
       document.querySelector('#score-map .measure[data-measure="1"]').classList,
@@ -627,7 +627,7 @@ describe("director review UI", () => {
                 {
                   part_id: "P1",
                   part_name: "Violin",
-                  tier: "Challenge",
+                  tier: "Original",
                   url: "/artifacts/JOB123/custom-P1.musicxml",
                 },
               ],
@@ -649,9 +649,9 @@ describe("director review UI", () => {
       "Build mixed-tier set",
     );
 
-    // Reassign P1 to Challenge.
+    // Reassign P1 to Original.
     const select = document.querySelector('[data-tier-part="P1"]');
-    select.value = "Challenge";
+    select.value = "Original";
     select.dispatchEvent(new Event("change", { bubbles: true }));
     expect(document.querySelector("#build-mixed").textContent).toBe(
       "Build mixed-tier set (1 reassigned)",
@@ -662,7 +662,7 @@ describe("director review UI", () => {
     await vi.waitFor(() => expect(generateBodies).toHaveLength(2));
     expect(
       JSON.parse(generateBodies[1].headers["X-Particular-Tier-Assignments"]),
-    ).toEqual({ P1: "Challenge" });
+    ).toEqual({ P1: "Original" });
 
     await vi.waitFor(() =>
       expect(document.querySelector("#mixed-downloads").hidden).toBe(false),
@@ -674,7 +674,7 @@ describe("director review UI", () => {
     expect(links[1].getAttribute("href")).toBe(
       "/artifacts/JOB123/custom-P1.musicxml",
     );
-    expect(links[1].textContent).toContain("Challenge");
+    expect(links[1].textContent).toContain("Original");
   });
 
   it("clears tier assignments on a new upload", async () => {
@@ -690,7 +690,7 @@ describe("director review UI", () => {
     );
 
     const select = document.querySelector('[data-tier-part="P1"]');
-    select.value = "Foundation";
+    select.value = "Essential";
     select.dispatchEvent(new Event("change", { bubbles: true }));
     expect(document.querySelector("#build-mixed").textContent).toContain(
       "1 reassigned",
@@ -723,18 +723,18 @@ describe("director review UI", () => {
     expect(osmd.loads).toEqual([MUSICXML]);
     expect(document.querySelector("#notation svg")).toBeTruthy();
     expect(document.querySelector("#notation-status").textContent).toContain(
-      "Showing the Foundation arrangement",
+      "Showing the Essential arrangement",
     );
 
     // Switching tiers re-engraves that tier without a second OSMD instance.
     const coreTab = [
       ...document.querySelectorAll('#tier-tabs [role="tab"]'),
-    ].find((tab) => tab.textContent === "Core");
+    ].find((tab) => tab.textContent === "Supported");
     coreTab.click();
     await vi.waitFor(() => expect(osmd.renders).toBe(2));
     expect(osmd.instances).toBe(1);
     expect(document.querySelector("#notation-status").textContent).toContain(
-      "Showing the Core arrangement",
+      "Showing the Supported arrangement",
     );
   });
 
@@ -778,23 +778,23 @@ describe("director review UI", () => {
       expect(document.querySelector("#results").hidden).toBe(false),
     );
 
-    // Source options include the original and every tier; default is the
-    // reviewed tier (Foundation).
+    // Source options include the normalized source and every tier; default is
+    // the reviewed tier (Essential).
     const source = document.querySelector("#audition-source");
     expect([...source.options].map((o) => o.textContent)).toEqual([
+      "Source",
+      "Essential",
+      "Supported",
       "Original",
-      "Foundation",
-      "Core",
-      "Challenge",
     ]);
-    expect(source.selectedOptions[0].textContent).toBe("Foundation");
+    expect(source.selectedOptions[0].textContent).toBe("Essential");
 
     // Play schedules every note in the timeline (2 + 1 across two parts).
     document.querySelector("#play").click();
     await vi.waitFor(() => expect(audio.oscillators).toBe(3));
     expect(document.querySelector("#play").textContent).toBe("Stop");
     expect(document.querySelector("#playback-status").textContent).toContain(
-      "Playing Foundation",
+      "Playing Essential",
     );
 
     // A second click stops each of the three active oscillators.
@@ -869,10 +869,10 @@ describe("director review UI", () => {
               available: true,
               note: "Generated PDFs require director review before rehearsal.",
               exports: {
+                Source: "/artifacts/JOB123/source.pdf",
+                Essential: "/artifacts/JOB123/essential.pdf",
+                Supported: "/artifacts/JOB123/supported.pdf",
                 Original: "/artifacts/JOB123/original.pdf",
-                Foundation: "/artifacts/JOB123/foundation.pdf",
-                Core: "/artifacts/JOB123/core.pdf",
-                Challenge: "/artifacts/JOB123/challenge.pdf",
               },
             },
           },
@@ -894,7 +894,7 @@ describe("director review UI", () => {
     const hrefs = [...pdfDownloads.querySelectorAll("a")].map((a) =>
       a.getAttribute("href"),
     );
-    expect(hrefs).toContain("/artifacts/JOB123/foundation.pdf");
+    expect(hrefs).toContain("/artifacts/JOB123/essential.pdf");
     expect(hrefs).toHaveLength(4);
   });
 

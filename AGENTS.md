@@ -6,7 +6,7 @@ These instructions apply throughout the Particular repository.
 
 - MusicXML is the canonical interchange format; MIDI is a derived playback format.
 - Source scores are immutable. Normalized scores and arrangements are traceable derivatives.
-- Foundation, Core, and Challenge describe relative Particular tiers, not universal grade levels.
+- Particular arranges by reduction only (ADR 0002): Original (as written), Supported, and Essential describe relative Particular tiers, not universal grade levels.
 - Deterministic validation owns acceptance. Optional AI may propose or rank candidates but cannot bypass constraints.
 - Keep musical analysis, transformation, and validation in `services/arranger`, never in the web application.
 - Preserve duration, form, alignment, instrument safety, and protected ensemble roles or report an explicit failure.

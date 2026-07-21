@@ -16,7 +16,7 @@ class ArrangementValidationError(ValueError):
 
 
 PITCH_CLASSES = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
-EXPECTED_TIERS = ["Foundation", "Core", "Challenge"]
+EXPECTED_TIERS = ["Essential", "Supported", "Original"]
 
 
 def _structure(score: Score) -> list[tuple[str, int, int, tuple[Measure, ...]]]:
@@ -123,7 +123,7 @@ def validate_family(
 ) -> None:
     if [tier.name for tier in family.tiers] != EXPECTED_TIERS:
         raise ArrangementValidationError(
-            "tier family must contain Foundation, Core, and Challenge in order"
+            "tier family must contain Essential, Supported, and Original in order"
         )
     source_shape = _structure(source)
     source_coverage = _voice_coverage(source)
