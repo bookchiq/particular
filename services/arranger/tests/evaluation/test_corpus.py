@@ -135,18 +135,21 @@ def test_repository_corpus_is_valid_and_filterable() -> None:
     inventory = validate_corpus(REPOSITORY_ROOT, MANIFEST_PATH, SCHEMA_PATH)
 
     assert [item.id for item in inventory] == [
+        "brandenburg-no3-mvt3-excerpt",
         "mixed-ensemble-transposition",
         "string-orchestra-second-violin",
     ]
     entries = load_manifest(MANIFEST_PATH)
     assert [entry["id"] for entry in select_entries(entries, family="strings")] == [
+        "brandenburg-no3-mvt3-excerpt",
         "mixed-ensemble-transposition",
         "string-orchestra-second-violin",
     ]
     assert [entry["id"] for entry in select_entries(entries, feature="transposition")] == [
-        "mixed-ensemble-transposition"
+        "brandenburg-no3-mvt3-excerpt",
+        "mixed-ensemble-transposition",
     ]
-    assert len(select_entries(entries, expected_result="accept")) == 2
+    assert len(select_entries(entries, expected_result="accept")) == 3
 
 
 def test_review_document_validation_accepts_and_rejects() -> None:

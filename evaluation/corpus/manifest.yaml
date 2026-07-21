@@ -2,6 +2,43 @@
   "version": 1,
   "entries": [
     {
+      "id": "brandenburg-no3-mvt3-excerpt",
+      "path": "evaluation/fixtures/brandenburg-no3-mvt3-excerpt.musicxml",
+      "title": "Brandenburg Concerto No. 3, BWV 1048 — Movement 3 (mm. 1-4 excerpt)",
+      "composer": "Johann Sebastian Bach",
+      "work_status": "public-domain",
+      "source": "OpenScore Orchestra / Hauptstimme v1.0.1 (CC0), traced to public-domain IMSLP editions. First four measures of movement 3; measures 5-48 removed and presentational data (stems, beams, dots, accidentals, slurs, layout, directions) stripped for canonical export, with the Violone's octave transposition folded into chromatic/diatonic. No pitches or rhythms altered. https://github.com/MarkGotham/Hauptstimme/tree/v1.0.1",
+      "encoding_license": "CC0-1.0",
+      "instrumentation": [
+        { "part": "P1", "instrument": "Violin 1", "family": "strings" },
+        { "part": "P2", "instrument": "Violin 2", "family": "strings" },
+        { "part": "P3", "instrument": "Violin 3", "family": "strings" },
+        { "part": "P4", "instrument": "Viola 1", "family": "strings" },
+        { "part": "P5", "instrument": "Viola 2", "family": "strings" },
+        { "part": "P6", "instrument": "Viola 3", "family": "strings" },
+        { "part": "P7", "instrument": "Violoncello 1", "family": "strings" },
+        { "part": "P8", "instrument": "Violoncello 2", "family": "strings" },
+        { "part": "P9", "instrument": "Violoncello 3", "family": "strings" },
+        { "part": "P10", "instrument": "Violone", "family": "strings" },
+        { "part": "P11", "instrument": "Harpsichord", "family": "keyboard" }
+      ],
+      "sha256": "088d7cc43248ae06cfcaa8997161aecd90efa78d4052d67efaff144729bc958d",
+      "expected_result": "accept",
+      "parser_coverage": [
+        "attributes",
+        "notes",
+        "rests",
+        "ties",
+        "transposition"
+      ],
+      "test_uses": [
+        "large-ensemble",
+        "real-repertoire",
+        "rhythm-reduction",
+        "run-thin-demonstration"
+      ]
+    },
+    {
       "id": "mixed-ensemble-transposition",
       "path": "evaluation/fixtures/mixed-ensemble-transposition.musicxml",
       "title": "Three Roles in Concert C",
