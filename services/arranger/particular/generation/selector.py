@@ -11,6 +11,7 @@ from particular.domain.score import Event, Measure, Part, Score, SourceLocator
 from particular.generation.candidates import Candidate
 from particular.generation.operators import (
     adjust_octave_range,
+    fold_large_leaps,
     reduce_rhythm,
     thin_repetitions,
     thin_run,
@@ -114,6 +115,8 @@ def _candidate_pressure(candidate: Candidate, vector: DifficultyVector) -> float
         pressures.append(min(1.0, vector.max_note_density_per_quarter / 4.0))
     if "rhythmic_complexity" in candidate.difficulty_delta:
         pressures.append(min(1.0, vector.rhythmic_complexity))
+    if "largest_leap" in candidate.difficulty_delta:
+        pressures.append(min(1.0, vector.largest_leap_semitones / 12.0))
     return max(pressures, default=0.0)
 
 
@@ -166,6 +169,7 @@ def generate_arrangement_family(
                 adjust_octave_range(measure.events, minimum, maximum, protected),
                 thin_repetitions(measure.events, protected),
                 thin_run(measure.events, protected, measure.divisions),
+                fold_large_leaps(measure.events, minimum, maximum, protected),
             )
             vector = analyze_part(replace(part, measures=(measure,)), profile_override).vector
             proposed.extend(
