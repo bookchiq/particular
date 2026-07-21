@@ -372,8 +372,14 @@ describe("director review UI", () => {
       expect(document.querySelector("#results").hidden).toBe(false),
     );
 
+    // Tabs read Original, Supported, Essential; Essential (last) opens selected.
     const tabs = [...document.querySelectorAll('#tier-tabs [role="tab"]')];
-    expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1]);
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      "Original",
+      "Supported",
+      "Essential",
+    ]);
+    expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, -1, 0]);
     expect(
       tabs.every((tab) => tab.getAttribute("aria-controls") === "changes"),
     ).toBe(true);
@@ -399,13 +405,15 @@ describe("director review UI", () => {
         new KeyboardEvent("keydown", { key, bubbles: true }),
       );
 
+    // Focus starts on Essential (the selected tab, last in order); ArrowRight
+    // wraps to Original (first).
     press("ArrowRight");
-    expect(tabs[1].getAttribute("aria-selected")).toBe("true");
-    expect(tabs[1].tabIndex).toBe(0);
-    expect(document.activeElement).toBe(tabs[1]);
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+    expect(tabs[0].tabIndex).toBe(0);
+    expect(document.activeElement).toBe(tabs[0]);
     expect(
       document.querySelector("#changes").getAttribute("aria-labelledby"),
-    ).toBe("tier-tab-Supported");
+    ).toBe("tier-tab-Original");
 
     press("End");
     expect(tabs[2].getAttribute("aria-selected")).toBe("true");

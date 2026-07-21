@@ -392,7 +392,12 @@ async function loadSamples() {
 }
 loadSamples();
 
-const TIERS = ["Essential", "Supported", "Original"];
+// Tabs read as a descent from the score as written (Original) to the most
+// accessible reduction (Essential), matching how a director thinks about the
+// ladder. The tab that opens selected is Essential, because that is where the
+// reductions are most visible.
+const TIERS = ["Original", "Supported", "Essential"];
+const DEFAULT_TIER_VIEW = "Essential";
 
 // Build the tier tablist following the ARIA Tabs pattern: one tab is selected
 // with tabindex 0, the rest are -1 (roving tabindex), and each controls the
@@ -400,7 +405,7 @@ const TIERS = ["Essential", "Supported", "Original"];
 function renderTabs() {
   const tablist = document.querySelector("#tier-tabs");
   tablist.innerHTML = "";
-  TIERS.forEach((tier, index) => {
+  TIERS.forEach((tier) => {
     const tab = document.createElement("button");
     tab.type = "button";
     tab.id = `tier-tab-${tier}`;
@@ -408,13 +413,14 @@ function renderTabs() {
     tab.dataset.tier = tier;
     tab.textContent = tier;
     tab.setAttribute("aria-controls", "changes");
-    tab.setAttribute("aria-selected", String(index === 0));
-    tab.tabIndex = index === 0 ? 0 : -1;
+    const selected = tier === DEFAULT_TIER_VIEW;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
     tab.addEventListener("click", () => selectTier(tier, { focus: true }));
     tablist.append(tab);
   });
   tablist.onkeydown = onTablistKeydown;
-  selectTier(TIERS[0], { focus: false });
+  selectTier(DEFAULT_TIER_VIEW, { focus: false });
 }
 
 function selectTier(tier, { focus }) {
