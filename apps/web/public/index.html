@@ -147,6 +147,34 @@
           ></p>
           <div id="notation" class="notation"></div>
         </section>
+        <section
+          class="panel audition-panel"
+          id="audition-panel"
+          aria-labelledby="audition-title"
+        >
+          <h3 id="audition-title">Audition</h3>
+          <p class="audition-hint">
+            Hear an arrangement with a simple built-in synth—compare the
+            original against a tier, or solo a single part. Plays locally in
+            your browser.
+          </p>
+          <div class="audition-controls">
+            <label
+              >Source
+              <select id="audition-source"></select>
+            </label>
+            <label
+              >Part
+              <select id="audition-part"></select>
+            </label>
+            <button id="play" type="button" class="play">Play</button>
+          </div>
+          <p
+            id="playback-status"
+            class="playback-status"
+            aria-live="polite"
+          ></p>
+        </section>
         <div class="result-grid">
           <section class="panel" aria-labelledby="difficulty-title">
             <h3 id="difficulty-title">Part difficulty</h3>

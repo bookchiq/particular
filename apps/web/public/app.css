@@ -314,6 +314,44 @@ input:focus-visible {
   margin-top: 1rem;
   overflow-x: auto;
 }
+.audition-panel {
+  margin-top: 1.5rem;
+}
+.audition-hint {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.audition-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: end;
+}
+.audition-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.audition-controls select {
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+}
+.play {
+  width: auto;
+  margin: 0;
+  padding: 0.6rem 1.4rem;
+  box-shadow: 3px 3px 0 var(--line);
+}
+.playback-status {
+  min-height: 1.2rem;
+  margin: 0.8rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
 .notation:not(:empty) {
   padding: 1rem;
   background: #fff;

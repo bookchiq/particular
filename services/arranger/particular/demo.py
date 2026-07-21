@@ -26,6 +26,7 @@ from particular.application import (
     generate_to_directory,
     mixed_part_export_filename,
     part_export_filename,
+    playback_filename,
 )
 from particular.errors import classify_error
 from particular.importers.musicxml import MAX_EVENTS, MAX_PARTS
@@ -331,6 +332,11 @@ class DemoHandler(BaseHTTPRequestHandler):
                 ]
                 for tier in ("Foundation", "Core", "Challenge")
             },
+            # Audition timelines: the normalized original alongside each tier.
+            "playback": {
+                label: f"/artifacts/{job_id}/" + playback_filename(label)
+                for label in ("Original", "Foundation", "Core", "Challenge")
+            },
         }
         # The mixed-tier set exists only when the director assigned tiers.
         custom = manifest.get("custom_arrangement")
@@ -338,6 +344,7 @@ class DemoHandler(BaseHTTPRequestHandler):
             tiers_by_part = {part["part_id"]: part["tier"] for part in custom["parts"]}
             response["custom_set"] = {
                 "url": f"/artifacts/{job_id}/{MIXED_TIER_FILENAME}",
+                "playback_url": f"/artifacts/{job_id}/" + playback_filename("custom"),
                 "part_exports": [
                     {
                         "part_id": part["part_id"],

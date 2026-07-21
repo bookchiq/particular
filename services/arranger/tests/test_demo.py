@@ -113,6 +113,41 @@ def test_rejects_malformed_locked_measures(demo_server: tuple[str, int]) -> None
     assert "diagnostic_id" in payload
 
 
+def test_serves_playback_timelines_for_original_and_tiers(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, FIXTURE.read_bytes())
+    assert status == 200
+    assert set(payload["playback"]) == {"Original", "Foundation", "Core", "Challenge"}
+
+    connection = http.client.HTTPConnection(*demo_server)
+    connection.request("GET", cast(str, payload["playback"]["Foundation"]))
+    response = connection.getresponse()
+    timeline = cast(dict[str, Any], json.loads(response.read()))
+    connection.close()
+
+    assert response.status == 200
+    assert response.getheader("Content-Type") == "application/json"
+    assert timeline["tempo_bpm"] > 0
+    assert {part["part_id"] for part in timeline["parts"]} == {"P1", "P2", "P3", "P4"}
+    assert any(part["notes"] for part in timeline["parts"])
+
+
+def test_mixed_tier_set_includes_a_playback_timeline(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(
+        demo_server, FIXTURE.read_bytes(), tier_assignments={"P1": "Foundation"}
+    )
+    assert status == 200
+    url = payload["custom_set"]["playback_url"]
+
+    connection = http.client.HTTPConnection(*demo_server)
+    connection.request("GET", cast(str, url))
+    response = connection.getresponse()
+    timeline = cast(dict[str, Any], json.loads(response.read()))
+    connection.close()
+
+    assert response.status == 200
+    assert {part["part_id"] for part in timeline["parts"]} == {"P1", "P2", "P3", "P4"}
+
+
 def test_builds_and_serves_a_mixed_tier_set(demo_server: tuple[str, int]) -> None:
     status, payload = _post(
         demo_server,
