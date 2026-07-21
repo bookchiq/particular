@@ -38,6 +38,7 @@ def _post(
     rights_basis: str | None = "authorized",
     profile_overrides: dict[str, str] | None = None,
     locks: str | list[list[str]] | None = None,
+    tier_assignments: str | dict[str, str] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     connection = http.client.HTTPConnection(*address)
     headers = {"X-Particular-Filename": filename}
@@ -47,6 +48,10 @@ def _post(
         headers["X-Particular-Instrument-Profiles"] = json.dumps(profile_overrides)
     if locks is not None:
         headers["X-Particular-Locks"] = locks if isinstance(locks, str) else json.dumps(locks)
+    if tier_assignments is not None:
+        headers["X-Particular-Tier-Assignments"] = (
+            tier_assignments if isinstance(tier_assignments, str) else json.dumps(tier_assignments)
+        )
     connection.request("POST", "/api/generate", body, headers)
     response = connection.getresponse()
     payload = cast(dict[str, Any], json.loads(response.read()))
@@ -104,6 +109,55 @@ def test_honors_locked_measures_and_records_them(demo_server: tuple[str, int]) -
 
 def test_rejects_malformed_locked_measures(demo_server: tuple[str, int]) -> None:
     status, payload = _post(demo_server, FIXTURE.read_bytes(), locks="not-json")
+    assert status == 400
+    assert "diagnostic_id" in payload
+
+
+def test_builds_and_serves_a_mixed_tier_set(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(
+        demo_server,
+        FIXTURE.read_bytes(),
+        tier_assignments={"P1": "Foundation", "P3": "Challenge"},
+    )
+
+    assert status == 200
+    custom = payload["manifest"]["custom_arrangement"]
+    assert custom["assignments"] == {"P1": "Foundation", "P3": "Challenge"}
+    # Unassigned parts default to Core in the recorded per-part tiers.
+    resolved = {part["part_id"]: part["tier"] for part in custom["parts"]}
+    assert resolved == {"P1": "Foundation", "P2": "Core", "P3": "Challenge", "P4": "Core"}
+
+    custom_set = payload["custom_set"]
+    assert {entry["part_id"] for entry in custom_set["part_exports"]} == {"P1", "P2", "P3", "P4"}
+
+    # The mixed full score and a mixed single part both download as MusicXML.
+    for url in (custom_set["url"], custom_set["part_exports"][0]["url"]):
+        connection = http.client.HTTPConnection(*demo_server)
+        connection.request("GET", cast(str, url))
+        response = connection.getresponse()
+        body = response.read()
+        connection.close()
+        assert response.status == 200
+        assert response.getheader("Content-Type") == "application/vnd.recordare.musicxml+xml"
+        assert b"score-partwise" in body
+    assert body.count(b"<part ") == 1
+
+
+def test_omits_custom_set_without_tier_assignments(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, FIXTURE.read_bytes())
+    assert status == 200
+    assert "custom_set" not in payload
+    assert "custom_arrangement" not in payload["manifest"]
+
+
+def test_rejects_malformed_tier_assignments(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, FIXTURE.read_bytes(), tier_assignments="not-json")
+    assert status == 400
+    assert "diagnostic_id" in payload
+
+
+def test_rejects_unknown_tier_in_assignments(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, FIXTURE.read_bytes(), tier_assignments={"P1": "Expert"})
     assert status == 400
     assert "diagnostic_id" in payload
 

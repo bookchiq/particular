@@ -278,6 +278,34 @@ input:focus-visible {
   padding: 0.6rem 1.1rem;
   box-shadow: 3px 3px 0 var(--line);
 }
+.tier-assign {
+  display: block;
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.tier-assign select,
+.profile-override select {
+  margin-left: 0.4rem;
+  padding: 0.2rem 0.4rem;
+  font: inherit;
+}
+.mixed-tier-panel {
+  margin-top: 1.5rem;
+}
+.mixed-tier-hint {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.build-mixed {
+  width: auto;
+  padding: 0.6rem 1.1rem;
+  box-shadow: 3px 3px 0 var(--line);
+}
+#mixed-downloads {
+  margin-top: 1rem;
+}
 #score-map-detail:not(:empty) {
   margin-top: 1rem;
   border-top: 1px solid #ccd3ce;

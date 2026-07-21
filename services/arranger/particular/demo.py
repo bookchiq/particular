@@ -21,8 +21,10 @@ from urllib.parse import unquote, urlsplit
 
 from particular.application import (
     ARTIFACT_FILENAMES,
+    MIXED_TIER_FILENAME,
     RIGHTS_BASES,
     generate_to_directory,
+    mixed_part_export_filename,
     part_export_filename,
 )
 from particular.errors import classify_error
@@ -211,6 +213,21 @@ class DemoHandler(BaseHTTPRequestHandler):
             raise ValueError("locked measures must be [part_id, measure] pairs")
         return frozenset((pair[0], pair[1]) for pair in locks)
 
+    def _tier_assignments(self) -> dict[str, str]:
+        raw_assignments = self.headers.get("X-Particular-Tier-Assignments")
+        if raw_assignments is None:
+            return {}
+        try:
+            assignments = json.loads(raw_assignments)
+        except json.JSONDecodeError as error:
+            raise ValueError("tier assignments must be JSON") from error
+        if not isinstance(assignments, dict) or not all(
+            isinstance(part_id, str) and isinstance(tier, str)
+            for part_id, tier in assignments.items()
+        ):
+            raise ValueError("tier assignments must map part IDs to tier names")
+        return assignments
+
     def _profile_overrides(self) -> dict[str, str]:
         raw_overrides = self.headers.get("X-Particular-Instrument-Profiles")
         if raw_overrides is None:
@@ -270,6 +287,7 @@ class DemoHandler(BaseHTTPRequestHandler):
                 self._profile_overrides(),
                 rights_basis=rights_basis,
                 locked_measures=self._locked_measures(),
+                tier_assignments=self._tier_assignments(),
             )
             manifest = json.loads((output / ARTIFACTS["manifest"]).read_text())
             analysis = json.loads((output / ARTIFACTS["analysis"]).read_text())
@@ -291,34 +309,47 @@ class DemoHandler(BaseHTTPRequestHandler):
             return
         source.unlink(missing_ok=True)
         self.server.register_job(job_id, output)
-        self._json(
-            HTTPStatus.OK,
-            {
-                "review_required": True,
-                "retention": {
-                    "max_completed_jobs": MAX_JOBS,
-                    "ttl_seconds": self.server.job_ttl_seconds,
-                },
-                "job_id": job_id,
-                "analysis": analysis,
-                "manifest": manifest,
-                "artifacts": {key: f"/artifacts/{job_id}/{key}" for key in ARTIFACTS},
-                "part_exports": {
-                    tier: [
-                        {
-                            "part_id": part["part_id"],
-                            "part_name": part["part_name"],
-                            "url": (
-                                f"/artifacts/{job_id}/"
-                                + part_export_filename(tier, part["part_id"])
-                            ),
-                        }
-                        for part in analysis["parts"]
-                    ]
-                    for tier in ("Foundation", "Core", "Challenge")
-                },
+        response: dict[str, Any] = {
+            "review_required": True,
+            "retention": {
+                "max_completed_jobs": MAX_JOBS,
+                "ttl_seconds": self.server.job_ttl_seconds,
             },
-        )
+            "job_id": job_id,
+            "analysis": analysis,
+            "manifest": manifest,
+            "artifacts": {key: f"/artifacts/{job_id}/{key}" for key in ARTIFACTS},
+            "part_exports": {
+                tier: [
+                    {
+                        "part_id": part["part_id"],
+                        "part_name": part["part_name"],
+                        "url": f"/artifacts/{job_id}/"
+                        + part_export_filename(tier, part["part_id"]),
+                    }
+                    for part in analysis["parts"]
+                ]
+                for tier in ("Foundation", "Core", "Challenge")
+            },
+        }
+        # The mixed-tier set exists only when the director assigned tiers.
+        custom = manifest.get("custom_arrangement")
+        if custom is not None:
+            tiers_by_part = {part["part_id"]: part["tier"] for part in custom["parts"]}
+            response["custom_set"] = {
+                "url": f"/artifacts/{job_id}/{MIXED_TIER_FILENAME}",
+                "part_exports": [
+                    {
+                        "part_id": part["part_id"],
+                        "part_name": part["part_name"],
+                        "tier": tiers_by_part[part["part_id"]],
+                        "url": f"/artifacts/{job_id}/"
+                        + mixed_part_export_filename(part["part_id"]),
+                    }
+                    for part in analysis["parts"]
+                ],
+            }
+        self._json(HTTPStatus.OK, response)
 
     def do_GET(self) -> None:
         path = unquote(urlsplit(self.path).path)
