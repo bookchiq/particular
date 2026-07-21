@@ -5,8 +5,12 @@ from __future__ import annotations
 from dataclasses import replace
 from fractions import Fraction
 
+from particular.analysis.difficulty import key_alteration
 from particular.domain.score import Event, SourceLocator
 from particular.generation.candidates import Candidate, candidate_id
+
+# Semitone offsets of each natural pitch class within an octave.
+PITCH_CLASSES = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
 NOTE_TYPES = {
     Fraction(4): "whole",
@@ -382,3 +386,63 @@ def desyncopate(
             True,
         )
     return _rejected(operator, events[:1], blocked_reason or "no note is tied across a beat")
+
+
+def simplify_accidentals(
+    events: tuple[Event, ...],
+    key_fifths: int | None,
+    protected: frozenset[SourceLocator],
+) -> Candidate:
+    """Naturalize a chromatic note to the key signature ("play it in the key").
+
+    Accidentals are a real reading and fingering burden for less-advanced
+    players, and the difficulty model measures that burden but no operator eases
+    it. This replaces a note whose written alteration contradicts the key
+    signature with the diatonic pitch of the same letter — e.g. an F-sharp in C
+    major becomes F-natural — removing the written accidental. Onset and duration
+    are untouched, and it changes no note count.
+
+    This is the one reductive operator that alters harmony, so it is deliberately
+    conservative: it never touches a protected role (melody, bass, or an exposed
+    entrance) or a tied note, and each change is shown in the review ledger for
+    the director to accept or reject.
+    """
+
+    operator = "accidental-simplify"
+    blocked_reason: str | None = None
+    for event in events:
+        if event.kind != "note" or event.written_pitch is None:
+            continue
+        if event.pitch_step is None or event.pitch_octave is None:
+            continue
+        implied = key_alteration(event.pitch_step, key_fifths)
+        if event.pitch_alter == implied:
+            continue  # already diatonic to the key — no accidental to remove
+        if event.tie_start or event.tie_stop:
+            blocked_reason = blocked_reason or "tied notes cannot be simplified safely"
+            continue
+        if event.locator in protected:
+            blocked_reason = blocked_reason or "protected role prevents accidental simplification"
+            continue
+        new_pitch = 12 * (event.pitch_octave + 1) + PITCH_CLASSES[event.pitch_step] + implied
+        offset = new_pitch - event.written_pitch
+        changed = replace(
+            event,
+            written_pitch=new_pitch,
+            pitch_alter=implied,
+            sounding_pitch=None if event.sounding_pitch is None else event.sounding_pitch + offset,
+        )
+        return Candidate(
+            candidate_id(operator, (event,)),
+            operator,
+            1,
+            ("Essential", "Supported"),
+            (event.locator,),
+            (event,),
+            (changed,),
+            {"accidental_burden": -1.0},
+            "A chromatic note was simplified to the key signature",
+            ("rhythm and onset retained",),
+            True,
+        )
+    return _rejected(operator, events[:1], blocked_reason or "no accidental to simplify")

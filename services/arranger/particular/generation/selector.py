@@ -14,6 +14,7 @@ from particular.generation.operators import (
     desyncopate,
     fold_large_leaps,
     reduce_rhythm,
+    simplify_accidentals,
     thin_repetitions,
     thin_run,
 )
@@ -120,6 +121,8 @@ def _candidate_pressure(candidate: Candidate, vector: DifficultyVector) -> float
         pressures.append(min(1.0, vector.largest_leap_semitones / 12.0))
     if "syncopation" in candidate.difficulty_delta:
         pressures.append(min(1.0, vector.syncopation))
+    if "accidental_burden" in candidate.difficulty_delta:
+        pressures.append(min(1.0, vector.accidental_burden / 4.0))
     return max(pressures, default=0.0)
 
 
@@ -174,6 +177,7 @@ def generate_arrangement_family(
                 thin_run(measure.events, protected, measure.divisions),
                 fold_large_leaps(measure.events, minimum, maximum, protected),
                 desyncopate(measure.events, protected, measure.divisions),
+                simplify_accidentals(measure.events, measure.key_fifths, protected),
             )
             vector = analyze_part(replace(part, measures=(measure,)), profile_override).vector
             proposed.extend(

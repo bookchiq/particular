@@ -162,7 +162,7 @@ class _MeasureMetrics:
     rhythmic_complexity: float
 
 
-def _key_alteration(step: str, key_fifths: int | None) -> int:
+def key_alteration(step: str, key_fifths: int | None) -> int:
     """Chromatic alteration a key signature already applies to a note step."""
 
     fifths = key_fifths or 0
@@ -187,7 +187,7 @@ def _measure_accidentals(measure: Measure) -> int:
         if event.kind != "note" or event.pitch_step is None:
             continue
         key = (event.pitch_step, event.pitch_octave)
-        current = state.get(key, _key_alteration(event.pitch_step, measure.key_fifths))
+        current = state.get(key, key_alteration(event.pitch_step, measure.key_fifths))
         if event.pitch_alter != current:
             count += 1
             state[key] = event.pitch_alter
