@@ -211,3 +211,7 @@ All work committed on top of `4fd0e5a` is authored by **Sarah Lewis with Claude
 commit as the authorship dividing line and attribute accordingly. When a change
 completes or supersedes a Codex-filed issue, keep this record accurate rather
 than rewriting it — the history is the point.
+
+The running catalog of that post-boundary work — every PR built after this line,
+mapped to the issues it closes, and what remains honestly not-done — lives in
+[post-boundary work](post-boundary-work.md).
