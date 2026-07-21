@@ -2,7 +2,13 @@
 
 Adaptive arrangements for mixed-ability ensembles. Particular turns one authorized MusicXML ensemble score into coordinated Foundation, Core, and Challenge parts that stay musically compatible — then lets a director review, adjust, and mix them part by part.
 
-A deterministic engine does the arranging (re-runs are byte-identical and every change is auditable); the browser demo wraps it in a **score-aware review workspace**: a per-measure score map, per-part downloads, measure locks with targeted regeneration, mixed-tier sets that draw each part from its own tier, and an engraved sheet-music preview. Generated parts are suggestions that require director review before rehearsal — the tool is explicit about that throughout. The [MVP plan](docs/plans/2026-07-18-001-feat-particular-mvp-plan.md) defines the original product contract and implementation sequence.
+A deterministic engine does the arranging (re-runs are byte-identical and every change is auditable); the browser demo wraps it in a **score-aware review workspace**: a per-measure score map, per-part downloads, measure locks with targeted regeneration, mixed-tier sets that draw each part from its own tier, an engraved sheet-music preview, and in-browser audition playback. Generated parts are suggestions that require director review before rehearsal — the tool is explicit about that throughout. The [MVP plan](docs/plans/2026-07-18-001-feat-particular-mvp-plan.md) defines the original product contract and implementation sequence.
+
+## See it in action
+
+![Particular demo: upload an authorized score, review the score map, lock a measure, engrave the tier, audition it, assign per-part tiers, and download the mixed set.](docs/media/particular-demo.gif)
+
+Upload an authorized score → review the per-measure score map → lock a measure → engrave the tier as sheet music → audition it → assign each part its own tier → download the coordinated mixed set. (Recorded against the local demo; PDF export appears here as its explicit fallback because MuseScore was not installed.)
 
 ## Provenance
 
