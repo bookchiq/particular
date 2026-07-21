@@ -35,6 +35,7 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
         "octave-range",
         "repetition-thin",
         "rhythm-merge",
+        "run-thin",
     }
     assert manifest["tiers"][0]["name"] == "Foundation"
     assert manifest["tiers"][0]["target"] == 0.35

@@ -9,7 +9,12 @@ from particular.analysis.roles import protected_locators
 from particular.domain.difficulty import DifficultyVector
 from particular.domain.score import Event, Measure, Part, Score, SourceLocator
 from particular.generation.candidates import Candidate
-from particular.generation.operators import adjust_octave_range, reduce_rhythm, thin_repetitions
+from particular.generation.operators import (
+    adjust_octave_range,
+    reduce_rhythm,
+    thin_repetitions,
+    thin_run,
+)
 
 
 @dataclass(frozen=True)
@@ -160,6 +165,7 @@ def generate_arrangement_family(
                 reduce_rhythm(measure.events, protected, measure.divisions),
                 adjust_octave_range(measure.events, minimum, maximum, protected),
                 thin_repetitions(measure.events, protected),
+                thin_run(measure.events, protected, measure.divisions),
             )
             vector = analyze_part(replace(part, measures=(measure,)), profile_override).vector
             proposed.extend(

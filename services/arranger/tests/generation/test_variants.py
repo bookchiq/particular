@@ -8,7 +8,12 @@ from particular.analysis.difficulty import analyze_part
 from particular.application import generation_manifest
 from particular.domain.score import Score
 from particular.exporters.musicxml import export_musicxml, semantic_fingerprint
-from particular.generation.operators import adjust_octave_range, reduce_rhythm, thin_repetitions
+from particular.generation.operators import (
+    adjust_octave_range,
+    reduce_rhythm,
+    thin_repetitions,
+    thin_run,
+)
 from particular.generation.selector import (
     ArrangementFamily,
     GenerationManifest,
@@ -78,6 +83,23 @@ def _unchanged_family(score: Score) -> ArrangementFamily:
         for name in ("Foundation", "Core", "Challenge")
     )
     return ArrangementFamily(tiers, GenerationManifest(2, ()))
+
+
+def _distinct_run_score() -> Score:
+    """A single part playing a fast scalar run of eight distinct eighth notes."""
+
+    steps = (("C", 4), ("D", 4), ("E", 4), ("F", 4), ("G", 4), ("A", 4), ("B", 4), ("C", 5))
+    notes = "".join(
+        f"<note><pitch><step>{step}</step><octave>{octave}</octave></pitch>"
+        "<duration>2</duration><type>eighth</type></note>"
+        for step, octave in steps
+    )
+    return parse_musicxml(
+        f"""<score-partwise><part-list><score-part id="P1"><part-name>Viola</part-name>
+        </score-part></part-list><part id="P1"><measure number="1"><attributes>
+        <divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
+        </attributes>{notes}</measure></part></score-partwise>""".encode()
+    )
 
 
 def _score_with_repeated_notes(durations: list[int], forward: int) -> Score:
@@ -167,6 +189,86 @@ def test_density_thinning_preserves_duration_and_rejects_melody_lock() -> None:
     rejected_tie = thin_repetitions(tied, frozenset())
     assert rejected_tie.accepted is False
     assert rejected_tie.rejection_reason == "tied notes cannot be thinned safely"
+
+
+def test_run_thin_absorbs_fast_distinct_notes_and_skips_blocked_pairs() -> None:
+    score = _distinct_run_score()
+    events = score.parts[0].measures[0].events
+
+    candidate = thin_run(events, frozenset(), divisions=4)
+    assert candidate.accepted is True
+    assert candidate.operator == "run-thin"
+    # The first pair (both unprotected here) is absorbed into one longer note.
+    assert candidate.locators == (events[0].locator, events[1].locator)
+    assert candidate.after[0].note_type == "quarter"
+    assert candidate.after[0].written_pitch == events[0].written_pitch
+    # Coverage and total duration are preserved.
+    assert sum(item.duration for item in candidate.before) == sum(
+        item.duration for item in candidate.after
+    )
+    assert candidate.difficulty_delta == {"note_density": -1.0, "rhythmic_complexity": -1.0}
+
+    # Same-pitch runs belong to the repetition operators, not this one.
+    same_pitch = tuple(
+        replace(
+            event,
+            written_pitch=events[0].written_pitch,
+            sounding_pitch=events[0].sounding_pitch,
+            pitch_step=events[0].pitch_step,
+            pitch_alter=events[0].pitch_alter,
+            pitch_octave=events[0].pitch_octave,
+        )
+        for event in events
+    )
+    same = thin_run(same_pitch, frozenset(), divisions=4)
+    assert same.accepted is False
+    assert same.rejection_reason == "no fast run of distinct notes to thin"
+
+    # A protected opening note does not block a safe pair later in the run.
+    later = thin_run(events, frozenset({events[0].locator}), divisions=4)
+    assert later.accepted is True
+    assert later.locators == (events[1].locator, events[2].locator)
+
+    # Ties and protection on the only structural pair reject with a clear reason.
+    tied = (replace(events[0], tie_start=True), replace(events[1], tie_stop=True))
+    tied_result = thin_run(tied, frozenset(), divisions=4)
+    assert tied_result.accepted is False
+    assert tied_result.rejection_reason == "tied notes cannot be thinned safely"
+
+    protected_pair = thin_run(events[:2], frozenset({events[1].locator}), divisions=4)
+    assert protected_pair.accepted is False
+    assert protected_pair.rejection_reason == "protected role prevents run thinning"
+
+    # Quarter-note "runs" are not fast enough to thin.
+    slow = tuple(replace(event, duration=4, note_type="quarter") for event in events[:2])
+    assert thin_run(slow, frozenset(), divisions=4).accepted is False
+
+
+def test_run_thin_eases_a_fast_distinct_run_in_the_easier_tiers() -> None:
+    source = _distinct_run_score()
+
+    family = generate_arrangement_family(source)
+
+    accepted = {
+        (change.tier, change.operator)
+        for change in family.manifest.changes
+        if change.status == "accepted"
+    }
+    # The busy run is thinned in the most-supported tier but never in the top tier.
+    assert ("Foundation", "run-thin") in accepted
+    assert ("Challenge", "run-thin") not in accepted
+    counts = [
+        sum(
+            event.kind == "note" and event.written_pitch is not None
+            for part in tier.score.parts
+            for measure in part.measures
+            for event in measure.events
+        )
+        for tier in family.tiers
+    ]
+    # Reduction only: the easiest tier has strictly fewer notes than the unchanged top tier.
+    assert counts[0] < counts[2]
+    validate_family(source, family)
 
 
 def test_family_is_deterministic_synchronized_and_round_trippable() -> None:

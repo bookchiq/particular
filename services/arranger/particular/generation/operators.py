@@ -171,3 +171,66 @@ def thin_repetitions(events: tuple[Event, ...], protected: frozenset[SourceLocat
         ("first entrance and total duration retained",),
         True,
     )
+
+
+def thin_run(
+    events: tuple[Event, ...],
+    protected: frozenset[SourceLocator],
+    divisions: int,
+) -> Candidate:
+    """Thin a fast run by absorbing an off-beat note into the note before it.
+
+    Complements :func:`reduce_rhythm` and :func:`thin_repetitions`, which only
+    act on repeated (same-pitch) notes. This handles the common busy passage
+    those reject: a run of adjacent, equal-duration, *fast* notes at *different*
+    pitches (a scale or arpeggio). The later note is absorbed into the earlier
+    one, which keeps the passage's onset coverage and total duration intact while
+    reducing note density and rhythmic detail.
+
+    The scan skips pairs that are protected or tied and continues, so a protected
+    run opening (a common exposed entrance) does not block thinning a safe pair
+    later in the same run. Same-pitch pairs are left to the repetition operators.
+    """
+
+    operator = "run-thin"
+    blocked_reason: str | None = None
+    for left, right in zip(events, events[1:], strict=False):
+        if left.kind != "note" or right.kind != "note" or left.voice != right.voice:
+            continue
+        if left.written_pitch is None or right.written_pitch is None:
+            continue
+        if left.written_pitch == right.written_pitch:
+            continue
+        if left.onset + left.duration != right.onset or left.duration != right.duration:
+            continue
+        if Fraction(left.duration, divisions) > Fraction(1, 2):
+            continue
+        if any(event.tie_start or event.tie_stop for event in (left, right)):
+            blocked_reason = blocked_reason or "tied notes cannot be thinned safely"
+            continue
+        if left.locator in protected or right.locator in protected:
+            blocked_reason = blocked_reason or "protected role prevents run thinning"
+            continue
+        merged_duration = left.duration + right.duration
+        note_type = NOTE_TYPES.get(Fraction(merged_duration, divisions))
+        if note_type is None:
+            blocked_reason = blocked_reason or "merged duration has no supported note type"
+            continue
+        pair = (left, right)
+        merged = replace(left, duration=merged_duration, note_type=note_type)
+        return Candidate(
+            candidate_id(operator, pair),
+            operator,
+            1,
+            ("Foundation", "Core"),
+            tuple(event.locator for event in pair),
+            pair,
+            (merged,),
+            {"note_density": -1.0, "rhythmic_complexity": -1.0},
+            "A fast off-beat note was absorbed into the note before it, thinning a run",
+            ("earlier onset and total duration retained",),
+            True,
+        )
+    return _rejected(
+        operator, events[:1], blocked_reason or "no fast run of distinct notes to thin"
+    )
