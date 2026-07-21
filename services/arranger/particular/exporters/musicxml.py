@@ -61,25 +61,40 @@ def export_musicxml(score: Score) -> bytes:
         ET.SubElement(score_part, "part-name").text = part.name
     for part in score.parts:
         part_element = ET.SubElement(root, "part", {"id": part.id})
+        # Attributes (divisions, key, time, transpose, clef) persist until
+        # redeclared, so emit each only where it changes from the previous
+        # measure — otherwise notation software reprints a clef and meter that
+        # are already in force. Re-import carries these values forward, so the
+        # round trip is unchanged.
         previous_transpose = (0, 0)
+        previous_divisions: int | None = None
+        previous_key: tuple[int | None, str | None] | None = None
+        previous_time: tuple[int, int] | None = None
+        previous_clef: tuple[str | None, int | None] | None = None
         for measure in part.measures:
             attributes = {"number": measure.number}
             if measure.implicit:
                 attributes["implicit"] = "yes"
             measure_element = ET.SubElement(part_element, "measure", attributes)
-            score_attributes = ET.SubElement(measure_element, "attributes")
-            ET.SubElement(score_attributes, "divisions").text = str(measure.divisions)
-            if measure.key_fifths is not None:
+            score_attributes = ET.Element("attributes")
+            if measure.divisions != previous_divisions:
+                ET.SubElement(score_attributes, "divisions").text = str(measure.divisions)
+                previous_divisions = measure.divisions
+            current_key = (measure.key_fifths, measure.key_mode)
+            if measure.key_fifths is not None and current_key != previous_key:
                 key = ET.SubElement(score_attributes, "key")
                 ET.SubElement(key, "fifths").text = str(measure.key_fifths)
                 if measure.key_mode is not None:
                     ET.SubElement(key, "mode").text = measure.key_mode
-            time = ET.SubElement(score_attributes, "time")
-            ET.SubElement(time, "beats").text = str(measure.beats)
-            ET.SubElement(time, "beat-type").text = str(measure.beat_type)
-            # Transposition persists until redeclared, so emit it only where it
-            # changes — including an explicit reset to concert pitch — so a
-            # mid-part instrument change survives the round trip.
+                previous_key = current_key
+            current_time = (measure.beats, measure.beat_type)
+            if current_time != previous_time:
+                time = ET.SubElement(score_attributes, "time")
+                ET.SubElement(time, "beats").text = str(measure.beats)
+                ET.SubElement(time, "beat-type").text = str(measure.beat_type)
+                previous_time = current_time
+            # An explicit reset to concert pitch (0, 0) still counts as a change,
+            # so a mid-part instrument change survives the round trip.
             current_transpose = (measure.chromatic_transposition, measure.diatonic_transposition)
             if current_transpose != previous_transpose:
                 transpose = ET.SubElement(score_attributes, "transpose")
@@ -87,11 +102,15 @@ def export_musicxml(score: Score) -> bytes:
                     ET.SubElement(transpose, "diatonic").text = str(measure.diatonic_transposition)
                 ET.SubElement(transpose, "chromatic").text = str(measure.chromatic_transposition)
                 previous_transpose = current_transpose
-            if measure.clef_sign is not None:
+            current_clef = (measure.clef_sign, measure.clef_line)
+            if measure.clef_sign is not None and current_clef != previous_clef:
                 clef = ET.SubElement(score_attributes, "clef")
                 ET.SubElement(clef, "sign").text = measure.clef_sign
                 if measure.clef_line is not None:
                     ET.SubElement(clef, "line").text = str(measure.clef_line)
+                previous_clef = current_clef
+            if len(score_attributes):
+                measure_element.append(score_attributes)
             for item in measure.directions:
                 direction_attributes = {"placement": item.placement} if item.placement else {}
                 direction = ET.SubElement(measure_element, "direction", direction_attributes)
