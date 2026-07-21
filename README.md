@@ -97,6 +97,10 @@ The engine and CLI make **no remote requests of any kind**. The browser demo is 
 
 ## Contributing
 
-Read [AGENTS.md](AGENTS.md) before changing the repository. Work on a feature branch, keep changes scoped, use conventional commits, and update architecture or product documentation when a cross-cutting decision changes. Generated contracts must be reproducible; do not edit generated clients by hand.
+New here? Start with [CONTRIBUTING.md](CONTRIBUTING.md) — it covers setup, the fast test gate, and how to propose a change, and it welcomes non-code feedback from musicians and directors. [AGENTS.md](AGENTS.md) holds the deeper product invariants and development rules. Work on a feature branch, keep changes scoped, use conventional commits, and update architecture or product documentation when a cross-cutting decision changes. Generated contracts must be reproducible; do not edit generated clients by hand. Please follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Only public-domain, original, or explicitly authorized score material may enter the project. Do not commit private scores, personal research data, credentials, or generated user artifacts. See [rights and privacy](docs/product/rights-and-privacy.md).
+
+## License
+
+The code is licensed under the [MIT License](LICENSE). The evaluation corpus is CC0; see each entry's provenance in [`evaluation/corpus/manifest.yaml`](evaluation/corpus/manifest.yaml).
