@@ -14,6 +14,67 @@ let lastBasis = null;
 const lockedMeasures = new Set();
 // Per-part tier choice for the mixed-tier set, keyed by part id (Core default).
 let tierAssignments = {};
+// Engraving state: the pinned notation library, the OSMD instance bound to the
+// preview container, whether the preview is showing, and which tier it shows.
+const OSMD_SRC =
+  "https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.0.0/build/opensheetmusicdisplay.min.js";
+let osmdLibraryPromise = null;
+let osmd = null;
+let notationOpen = false;
+let currentTier = "Foundation";
+
+// Resolve the OSMD library, injecting the CDN script once. Tests preload
+// window.opensheetmusicdisplay so this resolves without any network use.
+function loadOsmdLibrary() {
+  if (window.opensheetmusicdisplay)
+    return Promise.resolve(window.opensheetmusicdisplay);
+  if (osmdLibraryPromise) return osmdLibraryPromise;
+  osmdLibraryPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = OSMD_SRC;
+    script.crossOrigin = "anonymous";
+    script.referrerPolicy = "no-referrer";
+    script.onload = () =>
+      window.opensheetmusicdisplay
+        ? resolve(window.opensheetmusicdisplay)
+        : reject(new Error("notation library did not initialize"));
+    script.onerror = () => {
+      osmdLibraryPromise = null; // allow a later retry
+      reject(new Error("notation library failed to load"));
+    };
+    document.head.append(script);
+  });
+  return osmdLibraryPromise;
+}
+
+// Render the given tier's full-score MusicXML as engraved notation. Engraving
+// is online-only (the CDN library) but the score itself never leaves the page.
+async function engraveTier(tier) {
+  const container = document.querySelector("#notation");
+  const status = document.querySelector("#notation-status");
+  if (!container) return;
+  notationOpen = true;
+  status.textContent = "Engraving… loading the notation library.";
+  const url = payload.artifacts[tier.toLowerCase()];
+  try {
+    const library = await loadOsmdLibrary();
+    const xml = await (await fetch(url)).text();
+    if (!osmd) {
+      osmd = new library.OpenSheetMusicDisplay(container, {
+        autoResize: true,
+        backend: "svg",
+        drawTitle: false,
+      });
+    }
+    await osmd.load(xml);
+    osmd.render();
+    status.textContent = `Showing the ${tier} arrangement.`;
+  } catch {
+    container.innerHTML = "";
+    status.textContent =
+      "Couldn’t engrave — this needs an internet connection for the notation library. Try again.";
+  }
+}
 
 const labels = {
   pitch_range_semitones: "Range · semitones",
@@ -106,6 +167,11 @@ form.addEventListener("submit", (event) => {
   if (!file || !basis) return;
   lockedMeasures.clear(); // a new upload starts a fresh score
   tierAssignments = {};
+  notationOpen = false; // collapse any engraved preview from the previous score
+  const notation = document.querySelector("#notation");
+  if (notation) notation.innerHTML = "";
+  const notationStatus = document.querySelector("#notation-status");
+  if (notationStatus) notationStatus.textContent = "";
   runGeneration(file, basis.value);
 });
 
@@ -143,8 +209,10 @@ function selectTier(tier, { focus }) {
   }
   const panel = document.querySelector("#changes");
   if (panel) panel.setAttribute("aria-labelledby", `tier-tab-${tier}`);
+  currentTier = tier;
   renderChanges(tier);
   renderScoreMap(tier);
+  if (notationOpen) engraveTier(tier);
 }
 
 // Index a tier's changes by part and measure so the score map can locate them.
@@ -323,6 +391,10 @@ function render(sourceName) {
   }
   updateRegenerate();
   renderMixed();
+  const engrave = document.querySelector("#engrave");
+  if (engrave) engrave.onclick = () => engraveTier(currentTier);
+  // A fresh arrangement re-engraves the shown tier so the preview stays current.
+  if (notationOpen) engraveTier(currentTier);
 }
 
 // The mixed-tier set draws each part from its assigned tier. The build button

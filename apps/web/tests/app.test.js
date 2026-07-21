@@ -107,6 +107,29 @@ function jsonResponse(ok, payload) {
   return { ok, json: async () => payload };
 }
 
+const MUSICXML = "<score-partwise></score-partwise>";
+
+// Install a fake OSMD library so engraving runs without any network or real
+// SVG layout. Returns a record of how it was driven.
+function installOsmd() {
+  const calls = { instances: 0, loads: [], renders: 0 };
+  class FakeOSMD {
+    constructor(container) {
+      this.container = container;
+      calls.instances += 1;
+    }
+    async load(xml) {
+      calls.loads.push(xml);
+    }
+    render() {
+      calls.renders += 1;
+      this.container.innerHTML = "<svg data-osmd></svg>";
+    }
+  }
+  window.opensheetmusicdisplay = { OpenSheetMusicDisplay: FakeOSMD };
+  return calls;
+}
+
 // Installs a fetch mock. generateResponses is a queue of promises resolved by
 // the test so busy-state and out-of-order behavior can be driven precisely.
 function installFetch(generateResponses) {
@@ -114,6 +137,9 @@ function installFetch(generateResponses) {
   global.fetch = vi.fn(async (url, options = {}) => {
     if (url === "/api/limits") return jsonResponse(true, LIMITS);
     if (url === "/api/generate") return generateResponses.shift();
+    if (url.startsWith("/artifacts/") && options.method !== "DELETE") {
+      return { ok: true, text: async () => MUSICXML };
+    }
     if (options.method === "DELETE") {
       deletes.push(url);
       return jsonResponse(true, { deleted: true });
@@ -132,6 +158,9 @@ function installFetchCapturing(generateResponses) {
     if (url === "/api/generate") {
       generateBodies.push({ headers: options.headers || {} });
       return generateResponses.shift();
+    }
+    if (url.startsWith("/artifacts/") && options.method !== "DELETE") {
+      return { ok: true, text: async () => MUSICXML };
     }
     if (options.method === "DELETE")
       return jsonResponse(true, { deleted: true });
@@ -165,6 +194,7 @@ function submit() {
 beforeEach(() => {
   document.body.innerHTML = body;
   Element.prototype.scrollIntoView = () => {};
+  delete window.opensheetmusicdisplay;
 });
 
 describe("director review UI", () => {
@@ -591,6 +621,69 @@ describe("director review UI", () => {
     expect(
       JSON.parse(generateBodies[1].headers["X-Particular-Tier-Assignments"]),
     ).toEqual({});
+  });
+
+  it("engraves the selected tier and re-engraves when the tier changes", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    const osmd = installOsmd();
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    // Nothing is engraved until the director asks for it.
+    expect(document.querySelector("#notation").innerHTML).toBe("");
+
+    document.querySelector("#engrave").click();
+    await vi.waitFor(() => expect(osmd.renders).toBe(1));
+    expect(osmd.loads).toEqual([MUSICXML]);
+    expect(document.querySelector("#notation svg")).toBeTruthy();
+    expect(document.querySelector("#notation-status").textContent).toContain(
+      "Showing the Foundation arrangement",
+    );
+
+    // Switching tiers re-engraves that tier without a second OSMD instance.
+    const coreTab = [
+      ...document.querySelectorAll('#tier-tabs [role="tab"]'),
+    ].find((tab) => tab.textContent === "Core");
+    coreTab.click();
+    await vi.waitFor(() => expect(osmd.renders).toBe(2));
+    expect(osmd.instances).toBe(1);
+    expect(document.querySelector("#notation-status").textContent).toContain(
+      "Showing the Core arrangement",
+    );
+  });
+
+  it("shows an offline message when engraving fails", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    // A library whose load() rejects stands in for an offline/failed CDN load.
+    window.opensheetmusicdisplay = {
+      OpenSheetMusicDisplay: class {
+        constructor(container) {
+          this.container = container;
+        }
+        async load() {
+          throw new Error("unavailable");
+        }
+        render() {}
+      },
+    };
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    document.querySelector("#engrave").click();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#notation-status").textContent).toContain(
+        "Couldn’t engrave",
+      ),
+    );
+    expect(document.querySelector("#notation").innerHTML).toBe("");
   });
 
   it("ignores a stale earlier response so only the latest render wins", async () => {
