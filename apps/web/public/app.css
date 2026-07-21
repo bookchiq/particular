@@ -257,6 +257,27 @@ input:focus-visible {
   background: #fff2cd;
   border-color: #806318;
 }
+.measure.locked {
+  outline: 2px solid var(--coral);
+  outline-offset: -2px;
+}
+.lock-toggle {
+  width: auto;
+  margin: 0 0 0.8rem;
+  padding: 0.4rem 0.8rem;
+  background: none;
+  color: var(--coral);
+  border: 1px solid var(--coral);
+  box-shadow: none;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+.regenerate {
+  width: auto;
+  margin-top: 1rem;
+  padding: 0.6rem 1.1rem;
+  box-shadow: 3px 3px 0 var(--line);
+}
 #score-map-detail:not(:empty) {
   margin-top: 1rem;
   border-top: 1px solid #ccd3ce;

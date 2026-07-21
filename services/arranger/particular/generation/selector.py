@@ -112,18 +112,25 @@ def _tier_explanation(tier: str, target: float, selected: list[Candidate]) -> st
 
 
 def generate_arrangement_family(
-    score: Score, profile_overrides: dict[str, str] | None = None
+    score: Score,
+    profile_overrides: dict[str, str] | None = None,
+    locked_measures: frozenset[tuple[str, str]] | None = None,
 ) -> ArrangementFamily:
-    """Generate three compatible tiers with deterministic conflict resolution."""
+    """Generate three compatible tiers with deterministic conflict resolution.
+
+    Locked (part, measure) pairs are never transformed: no candidates are
+    produced for them, so they remain identical to the source in every tier.
+    """
 
     protected = protected_locators(score)
+    locked = locked_measures or frozenset()
     proposed: list[ScoredCandidate] = []
     policy = tier_policy()
     for part in score.parts:
         profile_override = (profile_overrides or {}).get(part.id)
         minimum, maximum = instrument_range(part, profile_override)
         for measure in part.measures:
-            if not measure.events:
+            if not measure.events or (part.id, measure.number) in locked:
                 continue
             candidates = (
                 reduce_rhythm(measure.events, protected, measure.divisions),

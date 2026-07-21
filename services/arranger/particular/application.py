@@ -157,6 +157,7 @@ def generation_manifest(
     profile_overrides: dict[str, str] | None = None,
     rights_basis: str | None = None,
     generated_at: str | None = None,
+    locked_measures: frozenset[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Build the stable, content-minimized generation audit record.
 
@@ -179,6 +180,7 @@ def generation_manifest(
         "tier_policy_version": family.manifest.policy_version,
         "operator_versions": operator_versions,
         "instrument_profile_overrides": dict(sorted(overrides.items())),
+        "locked_measures": sorted(list(pair) for pair in (locked_measures or frozenset())),
         "seed": None,
     }
     reproducibility_digest = hashlib.sha256(
@@ -225,6 +227,7 @@ def generate_to_directory(
     output_path: Path,
     profile_overrides: dict[str, str] | None = None,
     rights_basis: str | None = None,
+    locked_measures: frozenset[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Generate and atomically publish a complete arrangement directory."""
 
@@ -232,12 +235,18 @@ def generate_to_directory(
         raise FileExistsError(f"output directory already exists: {output_path}")
     score, checksum = load_score(source_path)
     overrides = _validate_profile_overrides(score, profile_overrides)
-    family = generate_arrangement_family(score, overrides)
+    family = generate_arrangement_family(score, overrides, locked_measures)
     validate_family(score, family, overrides)
     analysis = analyze_score(score, overrides)
     generated_at = datetime.now(UTC).isoformat()
     manifest = generation_manifest(
-        family, checksum, score, overrides, rights_basis=rights_basis, generated_at=generated_at
+        family,
+        checksum,
+        score,
+        overrides,
+        rights_basis=rights_basis,
+        generated_at=generated_at,
+        locked_measures=locked_measures,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output_path.name}-", dir=output_path.parent))

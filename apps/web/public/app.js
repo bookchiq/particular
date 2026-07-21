@@ -8,6 +8,10 @@ const sequencer = createSequencer();
 let inFlight = null;
 let payload;
 let profileOverrides = {};
+let lastFile = null;
+let lastBasis = null;
+// Measures the director locked against transformation, keyed "partId|measure".
+const lockedMeasures = new Set();
 
 const labels = {
   pitch_range_semitones: "Range · semitones",
@@ -32,11 +36,7 @@ async function showLimits() {
 }
 showLimits();
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const file = document.querySelector("#score-file").files[0];
-  const basis = form.querySelector('input[name="rights-basis"]:checked');
-  if (!file || !basis) return;
+async function runGeneration(file, basisValue) {
   // Supersede any in-flight request: take a fresh token and cancel the old fetch.
   const token = sequencer.next();
   if (inFlight) inFlight.abort();
@@ -51,8 +51,11 @@ form.addEventListener("submit", async (event) => {
       method: "POST",
       headers: {
         "X-Particular-Filename": file.name,
-        "X-Particular-Rights-Basis": basis.value,
+        "X-Particular-Rights-Basis": basisValue,
         "X-Particular-Instrument-Profiles": JSON.stringify(profileOverrides),
+        "X-Particular-Locks": JSON.stringify(
+          [...lockedMeasures].map((entry) => entry.split("|")),
+        ),
         "Content-Type": "application/octet-stream",
       },
       body: file,
@@ -68,6 +71,8 @@ form.addEventListener("submit", async (event) => {
         : "";
       throw new Error(payload.message || "Your score could not be processed.");
     }
+    lastFile = file;
+    lastBasis = basisValue;
     render(file.name);
     statusLine.textContent = "Your arrangement family is ready for review.";
     results.hidden = false;
@@ -89,6 +94,15 @@ form.addEventListener("submit", async (event) => {
     // Only the latest request restores the control; superseded ones leave it be.
     if (sequencer.isCurrent(token)) submitButton.disabled = false;
   }
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const file = document.querySelector("#score-file").files[0];
+  const basis = form.querySelector('input[name="rights-basis"]:checked');
+  if (!file || !basis) return;
+  lockedMeasures.clear(); // a new upload starts a fresh score
+  runGeneration(file, basis.value);
 });
 
 const TIERS = ["Foundation", "Core", "Challenge"];
@@ -161,19 +175,22 @@ function renderScoreMap(tier) {
     .map((part) => {
       const cells = (part.measures || [])
         .map((measure) => {
-          const at = located[`${part.part_id}|${measure}`];
+          const key = `${part.part_id}|${measure}`;
+          const at = located[key];
+          const locked = lockedMeasures.has(key);
           const state = at?.accepted.length
             ? "changed"
             : at?.rejected.length
               ? "declined"
               : "unchanged";
-          const label =
+          const stateLabel =
             state === "changed"
               ? "changed"
               : state === "declined"
                 ? "declined candidate"
                 : "unchanged";
-          return `<button type="button" class="measure ${state}" data-part="${escapeHtml(part.part_id)}" data-measure="${escapeHtml(measure)}" aria-label="${escapeHtml(part.part_name)} measure ${escapeHtml(measure)}: ${label}">${escapeHtml(measure)}</button>`;
+          const label = `${part.part_name} measure ${measure}: ${locked ? "locked, " : ""}${stateLabel}`;
+          return `<button type="button" class="measure ${state}${locked ? " locked" : ""}" data-part="${escapeHtml(part.part_id)}" data-measure="${escapeHtml(measure)}" aria-label="${escapeHtml(label)}">${escapeHtml(measure)}</button>`;
         })
         .join("");
       const url = exports[part.part_id];
@@ -192,15 +209,36 @@ function renderScoreMap(tier) {
 }
 
 function showMeasureDetail(partId, measure, tier) {
-  const at = changesByMeasure(tier)[`${partId}|${measure}`];
+  const key = `${partId}|${measure}`;
+  const at = changesByMeasure(tier)[key];
   const detail = document.querySelector("#score-map-detail");
-  if (!at) {
-    detail.innerHTML = `<p class="ledger-note">Measure ${escapeHtml(measure)}: unchanged in ${escapeHtml(tier)}.</p>`;
-    return;
-  }
-  detail.innerHTML = [...at.accepted, ...at.rejected]
-    .map(changeArticle)
-    .join("");
+  const locked = lockedMeasures.has(key);
+  const toggle = `<button type="button" class="lock-toggle" aria-pressed="${locked}">${locked ? "Unlock" : "Lock"} this measure</button>`;
+  const body = at
+    ? [...at.accepted, ...at.rejected].map(changeArticle).join("")
+    : `<p class="ledger-note">Measure ${escapeHtml(measure)}: unchanged in ${escapeHtml(tier)}.</p>`;
+  detail.innerHTML = toggle + body;
+  detail
+    .querySelector(".lock-toggle")
+    .addEventListener("click", () => toggleLock(partId, measure, tier));
+}
+
+function toggleLock(partId, measure, tier) {
+  const key = `${partId}|${measure}`;
+  if (lockedMeasures.has(key)) lockedMeasures.delete(key);
+  else lockedMeasures.add(key);
+  renderScoreMap(tier);
+  showMeasureDetail(partId, measure, tier);
+  updateRegenerate();
+}
+
+function updateRegenerate() {
+  const regenerate = document.querySelector("#regenerate");
+  if (!regenerate) return;
+  const count = lockedMeasures.size;
+  regenerate.textContent = count
+    ? `Regenerate (${count} locked)`
+    : "Regenerate";
 }
 
 function onTablistKeydown(event) {
@@ -266,6 +304,14 @@ function render(sourceName) {
         "Deleted. Your score and generated parts were removed.";
     };
   }
+  const regenerate = document.querySelector("#regenerate");
+  if (regenerate) {
+    regenerate.hidden = false;
+    regenerate.onclick = () => {
+      if (lastFile) runGeneration(lastFile, lastBasis);
+    };
+  }
+  updateRegenerate();
 }
 
 const deltaLabels = {

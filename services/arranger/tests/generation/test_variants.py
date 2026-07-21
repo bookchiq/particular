@@ -207,6 +207,51 @@ def test_tier_policy_uses_passage_difficulty_to_create_ordered_variants() -> Non
     validate_family(source, family)
 
 
+def test_locked_measures_are_never_transformed() -> None:
+    source = _tier_policy_score()
+
+    unlocked = generate_arrangement_family(source)
+    accepted_pairs = {
+        (change.part_id, change.measure)
+        for change in unlocked.manifest.changes
+        if change.status == "accepted"
+    }
+    assert accepted_pairs, "fixture must change at least one measure to be a meaningful lock test"
+    target = sorted(accepted_pairs)[0]
+
+    locked = generate_arrangement_family(source, locked_measures=frozenset({target}))
+
+    # No candidate — accepted or rejected — is ever recorded for the locked measure.
+    assert not [
+        change for change in locked.manifest.changes if (change.part_id, change.measure) == target
+    ]
+    # Every other measure is still free to change.
+    other_accepted = {
+        (change.part_id, change.measure)
+        for change in locked.manifest.changes
+        if change.status == "accepted"
+    }
+    assert accepted_pairs - {target} <= other_accepted
+    validate_family(source, locked)
+
+
+def test_manifest_records_locked_measures_in_reproducibility() -> None:
+    source = _tier_policy_score()
+    locked = frozenset({("P1", "1")})
+
+    manifest = generation_manifest(
+        generate_arrangement_family(source, locked_measures=locked),
+        "sha256",
+        source,
+        locked_measures=locked,
+    )
+
+    assert manifest["reproducibility"]["locked_measures"] == [["P1", "1"]]
+    # The digest depends on the locked set, so unlocked output digests differently.
+    unlocked = generation_manifest(generate_arrangement_family(source), "sha256", source)
+    assert manifest["reproducibility_digest"] != unlocked["reproducibility_digest"]
+
+
 def test_manifest_changes_carry_deltas_roles_version_and_locators() -> None:
     source = _tier_policy_score()
 
