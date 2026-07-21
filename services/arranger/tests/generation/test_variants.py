@@ -10,6 +10,7 @@ from particular.domain.score import Score
 from particular.exporters.musicxml import export_musicxml, semantic_fingerprint
 from particular.generation.operators import (
     adjust_octave_range,
+    desyncopate,
     fold_large_leaps,
     reduce_rhythm,
     thin_repetitions,
@@ -100,6 +101,46 @@ def _distinct_run_score() -> Score:
         </score-part></part-list><part id="P1"><measure number="1"><attributes>
         <divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
         </attributes>{notes}</measure></part></score-partwise>""".encode()
+    )
+
+
+def _syncopated_score() -> Score:
+    """One note (D4) attacks off the beat and is held across it; others are on-beat."""
+
+    return parse_musicxml(
+        b"""<score-partwise><part-list><score-part id="P1"><part-name>Viola</part-name>
+        </score-part></part-list><part id="P1"><measure number="1"><attributes>
+        <divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
+        </attributes>
+        <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration>
+        <type>eighth</type></note>
+        <note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        <note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration>
+        <type>eighth</type></note>
+        <note><pitch><step>F</step><octave>4</octave></pitch><duration>8</duration>
+        <type>half</type></note>
+        </measure></part></score-partwise>"""
+    )
+
+
+def _heavily_syncopated_score() -> Score:
+    """Three of four notes attack off the beat and hold across it (distinct pitches)."""
+
+    return parse_musicxml(
+        b"""<score-partwise><part-list><score-part id="P1"><part-name>Viola</part-name>
+        </score-part></part-list><part id="P1"><measure number="1"><attributes>
+        <divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
+        </attributes><forward><duration>2</duration></forward>
+        <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        <note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        <note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        <note><pitch><step>F</step><octave>4</octave></pitch><duration>2</duration>
+        <type>eighth</type></note>
+        </measure></part></score-partwise>"""
     )
 
 
@@ -366,6 +407,77 @@ def test_leap_fold_eases_wide_leaps_in_easier_tiers_without_changing_note_count(
     ]
     # Folding changes pitch, never note count, so every tier has the same count.
     assert len(set(counts)) == 1
+    validate_family(source, family)
+
+
+def test_desyncopate_splits_a_beat_crossing_note_into_a_tied_pair() -> None:
+    events = _syncopated_score().parts[0].measures[0].events
+
+    candidate = desyncopate(events, frozenset(), divisions=4)
+    assert candidate.accepted is True
+    assert candidate.operator == "desyncopate"
+    assert candidate.locators == (events[1].locator,)
+    first, second = candidate.after
+    # Two beat-aligned pieces of the same pitch, joined by a tie.
+    assert first.tie_start is True and first.tie_stop is False
+    assert second.tie_stop is True and second.tie_start is False
+    assert first.written_pitch == second.written_pitch == events[1].written_pitch
+    assert first.onset == events[1].onset
+    assert second.onset == 4  # the beat boundary
+    assert first.duration + second.duration == events[1].duration
+    # The continuation keeps the source note's identity via split_index.
+    assert second.locator.event_index == events[1].locator.event_index
+    assert first.locator.split_index == 0
+    assert second.locator.split_index == 1
+
+    # On-beat notes are left alone.
+    on_beat = desyncopate((events[0], events[3]), frozenset(), divisions=4)
+    assert on_beat.accepted is False
+    assert on_beat.rejection_reason == "no note is tied across a beat"
+
+    # Protected and already-tied notes are never split.
+    protected = desyncopate(events, frozenset({events[1].locator}), divisions=4)
+    assert protected.accepted is False
+    assert protected.rejection_reason == "protected role prevents de-syncopation"
+    tied = (replace(events[1], tie_start=True),)
+    tied_result = desyncopate(tied, frozenset(), divisions=4)
+    assert tied_result.accepted is False
+    assert tied_result.rejection_reason == "tied notes cannot be de-syncopated safely"
+
+
+def test_desyncopate_realigns_syncopation_without_adding_attacks() -> None:
+    source = _heavily_syncopated_score()
+
+    family = generate_arrangement_family(source)
+
+    accepted = {
+        (change.tier, change.operator)
+        for change in family.manifest.changes
+        if change.status == "accepted"
+    }
+    assert ("Foundation", "desyncopate") in accepted
+    assert ("Challenge", "desyncopate") not in accepted
+
+    def tie_starts(tier_score: Score) -> int:
+        return sum(
+            event.tie_start
+            for part in tier_score.parts
+            for measure in part.measures
+            for event in measure.events
+        )
+
+    def attacks(tier_score: Score) -> int:
+        return sum(
+            event.kind == "note" and event.written_pitch is not None and not event.tie_stop
+            for part in tier_score.parts
+            for measure in part.measures
+            for event in measure.events
+        )
+
+    # The easier tier gains a tied pair the untouched top tier does not have,
+    # but the number of attacks (notes to play) is identical across tiers.
+    assert tie_starts(family.tiers[0].score) > tie_starts(family.tiers[2].score)
+    assert len({attacks(tier.score) for tier in family.tiers}) == 1
     validate_family(source, family)
 
 
