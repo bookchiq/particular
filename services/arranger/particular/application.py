@@ -20,7 +20,13 @@ from particular.exporters.musicxml import (
     export_part_musicxml,
     semantic_fingerprint,
 )
-from particular.generation.selector import ArrangementFamily, generate_arrangement_family
+from particular.generation.selector import (
+    DEFAULT_TIER,
+    TIER_NAMES,
+    ArrangementFamily,
+    compose_mixed_tier,
+    generate_arrangement_family,
+)
 from particular.importers.musicxml import parse_musicxml
 from particular.importers.security import extract_mxl
 from particular.validation.arrangement import validate_family
@@ -103,6 +109,41 @@ def part_export_filename(tier: str, part_id: str) -> str:
     return f"{tier.casefold()}-{part_id}.musicxml"
 
 
+# The mixed-tier ("custom") set draws each part from a director-chosen tier.
+MIXED_TIER_FILENAME = "custom.musicxml"
+
+
+def mixed_part_export_filename(part_id: str) -> str:
+    """Stable filename for a single part of the mixed-tier custom set."""
+
+    return f"custom-{part_id}.musicxml"
+
+
+def _validate_tier_assignments(
+    score: Score, tier_assignments: dict[str, str] | None
+) -> dict[str, str]:
+    assignments = tier_assignments or {}
+    unknown_parts = sorted(set(assignments).difference(part.id for part in score.parts))
+    if unknown_parts:
+        raise ValueError(f"tier assignment references unknown part: {unknown_parts[0]}")
+    unknown_tiers = sorted(set(assignments.values()).difference(TIER_NAMES))
+    if unknown_tiers:
+        raise ValueError(f"tier assignment references unknown tier: {unknown_tiers[0]}")
+    return assignments
+
+
+def _custom_arrangement(score: Score, assignments: dict[str, str]) -> dict[str, Any]:
+    """Record the director's chosen tier per part, including defaulted parts."""
+
+    return {
+        "assignments": dict(sorted(assignments.items())),
+        "parts": [
+            {"part_id": part.id, "tier": assignments.get(part.id, DEFAULT_TIER)}
+            for part in score.parts
+        ],
+    }
+
+
 def _validate_profile_overrides(
     score: Score, profile_overrides: dict[str, str] | None
 ) -> dict[str, str]:
@@ -158,15 +199,20 @@ def generation_manifest(
     rights_basis: str | None = None,
     generated_at: str | None = None,
     locked_measures: frozenset[tuple[str, str]] | None = None,
+    tier_assignments: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build the stable, content-minimized generation audit record.
 
     The ``reproducibility`` block holds every input that determines the output,
     condensed into ``reproducibility_digest``; ``operational`` metadata (build
     identity, timestamp, rights attestation) is recorded but never affects it.
+    Mixed-tier ``tier_assignments`` only select among the reproducible tiers, so
+    they are recorded as a separate ``custom_arrangement`` block, not in the
+    reproducibility digest.
     """
 
     overrides = _validate_profile_overrides(source, profile_overrides)
+    assignments = _validate_tier_assignments(source, tier_assignments)
     operator_versions = dict(
         sorted((change.operator, change.operator_version) for change in family.manifest.changes)
     )
@@ -186,7 +232,7 @@ def generation_manifest(
     reproducibility_digest = hashlib.sha256(
         json.dumps(reproducibility, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    return {
+    manifest: dict[str, Any] = {
         "engine_version": ENGINE_VERSION,
         "policy_version": family.manifest.policy_version,
         "source_sha256": source_checksum,
@@ -220,6 +266,9 @@ def generation_manifest(
         ],
         "change_summary": _summarize_changes(family.manifest.changes),
     }
+    if assignments:
+        manifest["custom_arrangement"] = _custom_arrangement(source, assignments)
+    return manifest
 
 
 def generate_to_directory(
@@ -228,13 +277,20 @@ def generate_to_directory(
     profile_overrides: dict[str, str] | None = None,
     rights_basis: str | None = None,
     locked_measures: frozenset[tuple[str, str]] | None = None,
+    tier_assignments: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Generate and atomically publish a complete arrangement directory."""
+    """Generate and atomically publish a complete arrangement directory.
+
+    When ``tier_assignments`` are supplied, a mixed-tier ``custom`` score (each
+    part drawn from its assigned tier) and its per-part exports are published
+    alongside the standard tiers.
+    """
 
     if output_path.exists():
         raise FileExistsError(f"output directory already exists: {output_path}")
     score, checksum = load_score(source_path)
     overrides = _validate_profile_overrides(score, profile_overrides)
+    assignments = _validate_tier_assignments(score, tier_assignments)
     family = generate_arrangement_family(score, overrides, locked_measures)
     validate_family(score, family, overrides)
     analysis = analyze_score(score, overrides)
@@ -247,6 +303,7 @@ def generate_to_directory(
         rights_basis=rights_basis,
         generated_at=generated_at,
         locked_measures=locked_measures,
+        tier_assignments=assignments,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output_path.name}-", dir=output_path.parent))
@@ -258,6 +315,13 @@ def generate_to_directory(
             for part in tier.score.parts:
                 (temporary / part_export_filename(tier.name, part.id)).write_bytes(
                     export_part_musicxml(tier.score, part.id)
+                )
+        if assignments:
+            mixed = compose_mixed_tier(family, assignments)
+            (temporary / MIXED_TIER_FILENAME).write_bytes(export_musicxml(mixed))
+            for part in mixed.parts:
+                (temporary / mixed_part_export_filename(part.id)).write_bytes(
+                    export_part_musicxml(mixed, part.id)
                 )
         (temporary / ARTIFACT_FILENAMES["manifest"]).write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n",

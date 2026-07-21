@@ -12,6 +12,8 @@ let lastFile = null;
 let lastBasis = null;
 // Measures the director locked against transformation, keyed "partId|measure".
 const lockedMeasures = new Set();
+// Per-part tier choice for the mixed-tier set, keyed by part id (Core default).
+let tierAssignments = {};
 
 const labels = {
   pitch_range_semitones: "Range · semitones",
@@ -56,6 +58,7 @@ async function runGeneration(file, basisValue) {
         "X-Particular-Locks": JSON.stringify(
           [...lockedMeasures].map((entry) => entry.split("|")),
         ),
+        "X-Particular-Tier-Assignments": JSON.stringify(tierAssignments),
         "Content-Type": "application/octet-stream",
       },
       body: file,
@@ -102,6 +105,7 @@ form.addEventListener("submit", (event) => {
   const basis = form.querySelector('input[name="rights-basis"]:checked');
   if (!file || !basis) return;
   lockedMeasures.clear(); // a new upload starts a fresh score
+  tierAssignments = {};
   runGeneration(file, basis.value);
 });
 
@@ -264,7 +268,7 @@ function render(sourceName) {
   document.querySelector("#difficulty").innerHTML = payload.analysis.parts
     .map(
       (part) =>
-        `<details class="part" open><summary>${escapeHtml(part.part_name)} · ${escapeHtml(part.profile_id)} (${escapeHtml(part.profile_confidence)})</summary>${part.warning ? `<p>${escapeHtml(part.warning)}</p>` : ""}${part.profile_confidence === "ambiguous" ? `<label class="profile-override">Instrument profile <select data-part-id="${escapeHtml(part.part_id)}">${payload.analysis.available_instrument_profiles.map((profileId) => `<option value="${escapeHtml(profileId)}"${profileOverrides[part.part_id] === profileId ? " selected" : ""}>${escapeHtml(profileId)}</option>`).join("")}</select></label>` : ""}<div class="metrics">${Object.entries(
+        `<details class="part" open><summary>${escapeHtml(part.part_name)} · ${escapeHtml(part.profile_id)} (${escapeHtml(part.profile_confidence)})</summary>${part.warning ? `<p>${escapeHtml(part.warning)}</p>` : ""}${part.profile_confidence === "ambiguous" ? `<label class="profile-override">Instrument profile <select data-part-id="${escapeHtml(part.part_id)}">${payload.analysis.available_instrument_profiles.map((profileId) => `<option value="${escapeHtml(profileId)}"${profileOverrides[part.part_id] === profileId ? " selected" : ""}>${escapeHtml(profileId)}</option>`).join("")}</select></label>` : ""}<label class="tier-assign">Mixed-set tier <select class="tier-select" data-tier-part="${escapeHtml(part.part_id)}">${TIERS.map((tier) => `<option value="${tier}"${(tierAssignments[part.part_id] || "Core") === tier ? " selected" : ""}>${tier}</option>`).join("")}</select></label><div class="metrics">${Object.entries(
           labels,
         )
           .map(
@@ -279,6 +283,12 @@ function render(sourceName) {
       profileOverrides[select.dataset.partId] = select.value;
       statusLine.textContent =
         "Profile selected. Create particular parts again to apply it.";
+    });
+  });
+  document.querySelectorAll("[data-tier-part]").forEach((select) => {
+    select.addEventListener("change", () => {
+      tierAssignments[select.dataset.tierPart] = select.value;
+      updateMixed();
     });
   });
   const names = {
@@ -312,6 +322,46 @@ function render(sourceName) {
     };
   }
   updateRegenerate();
+  renderMixed();
+}
+
+// The mixed-tier set draws each part from its assigned tier. The build button
+// re-runs generation with the current assignments; downloads appear once the
+// server has produced the custom set.
+function renderMixed() {
+  const build = document.querySelector("#build-mixed");
+  if (!build) return;
+  build.onclick = () => {
+    if (lastFile) runGeneration(lastFile, lastBasis);
+  };
+  const downloads = document.querySelector("#mixed-downloads");
+  const custom = payload.custom_set;
+  if (custom) {
+    downloads.innerHTML =
+      `<a href="${custom.url}">Mixed-tier full score ↓</a>` +
+      custom.part_exports
+        .map(
+          (entry) =>
+            `<a href="${entry.url}">${escapeHtml(entry.part_name)} · ${escapeHtml(entry.tier)} ↓</a>`,
+        )
+        .join("");
+    downloads.hidden = false;
+  } else {
+    downloads.innerHTML = "";
+    downloads.hidden = true;
+  }
+  updateMixed();
+}
+
+function updateMixed() {
+  const build = document.querySelector("#build-mixed");
+  if (!build) return;
+  const assigned = Object.entries(tierAssignments).filter(
+    ([, tier]) => tier && tier !== "Core",
+  ).length;
+  build.textContent = assigned
+    ? `Build mixed-tier set (${assigned} reassigned)`
+    : "Build mixed-tier set";
 }
 
 const deltaLabels = {

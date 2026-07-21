@@ -57,6 +57,30 @@ class ArrangementFamily:
     manifest: GenerationManifest
 
 
+TIER_NAMES = ("Foundation", "Core", "Challenge")
+# Parts a director does not explicitly assign fall back to the middle tier.
+DEFAULT_TIER = "Core"
+
+
+def compose_mixed_tier(family: ArrangementFamily, assignments: dict[str, str]) -> Score:
+    """Compose one score drawing each part from its assigned tier.
+
+    ``assignments`` maps part id to tier name; parts absent from the mapping
+    fall back to :data:`DEFAULT_TIER`. Every part keeps the exact events the
+    engine produced for it in the chosen tier, so the result is a coordinated
+    arrangement by construction — no new transformation is introduced here.
+    """
+
+    scores_by_tier = {tier.name: tier.score for tier in family.tiers}
+    base = family.tiers[0].score
+    parts: list[Part] = []
+    for part in base.parts:
+        tier_name = assignments.get(part.id, DEFAULT_TIER)
+        tier_score = scores_by_tier[tier_name]
+        parts.append(next(candidate for candidate in tier_score.parts if candidate.id == part.id))
+    return replace(base, parts=tuple(parts))
+
+
 def _replace_events(score: Score, candidates: tuple[Candidate, ...]) -> Score:
     replacements: dict[SourceLocator, tuple[Event, ...]] = {}
     skipped: set[SourceLocator] = set()

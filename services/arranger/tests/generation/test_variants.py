@@ -13,6 +13,7 @@ from particular.generation.selector import (
     ArrangementFamily,
     GenerationManifest,
     TierScore,
+    compose_mixed_tier,
     generate_arrangement_family,
 )
 from particular.importers.musicxml import parse_musicxml
@@ -233,6 +234,55 @@ def test_locked_measures_are_never_transformed() -> None:
     }
     assert accepted_pairs - {target} <= other_accepted
     validate_family(source, locked)
+
+
+def test_compose_mixed_tier_draws_each_part_from_its_assigned_tier() -> None:
+    strings, _ = _scores()
+    family = generate_arrangement_family(strings)
+    part_ids = [part.id for part in strings.parts]
+    assignments = {part_ids[0]: "Foundation", part_ids[1]: "Challenge"}
+
+    mixed = compose_mixed_tier(family, assignments)
+
+    foundation = {part.id: part for part in family.tiers[0].score.parts}
+    core = {part.id: part for part in family.tiers[1].score.parts}
+    challenge = {part.id: part for part in family.tiers[2].score.parts}
+    mixed_parts = {part.id: part for part in mixed.parts}
+
+    # Assigned parts come from their tier; unassigned parts default to Core.
+    assert mixed_parts[part_ids[0]] is foundation[part_ids[0]]
+    assert mixed_parts[part_ids[1]] is challenge[part_ids[1]]
+    for part_id in part_ids[2:]:
+        assert mixed_parts[part_id] is core[part_id]
+    # Part identity and order are preserved, and the result round-trips.
+    assert [part.id for part in mixed.parts] == part_ids
+    assert semantic_fingerprint(parse_musicxml(export_musicxml(mixed))) == semantic_fingerprint(
+        mixed
+    )
+
+
+def test_manifest_records_custom_arrangement_without_touching_digest() -> None:
+    source = _tier_policy_score()
+    family = generate_arrangement_family(source)
+
+    baseline = generation_manifest(family, "sha256", source)
+    custom = generation_manifest(family, "sha256", source, tier_assignments={"P1": "Foundation"})
+
+    assert "custom_arrangement" not in baseline
+    assert custom["custom_arrangement"]["assignments"] == {"P1": "Foundation"}
+    assert custom["custom_arrangement"]["parts"] == [{"part_id": "P1", "tier": "Foundation"}]
+    # Assignments only select among reproducible tiers, so the digest is stable.
+    assert custom["reproducibility_digest"] == baseline["reproducibility_digest"]
+
+
+def test_mixed_tier_rejects_unknown_part_and_tier() -> None:
+    source = _tier_policy_score()
+    family = generate_arrangement_family(source)
+
+    with pytest.raises(ValueError, match="unknown part"):
+        generation_manifest(family, "sha256", source, tier_assignments={"PX": "Core"})
+    with pytest.raises(ValueError, match="unknown tier"):
+        generation_manifest(family, "sha256", source, tier_assignments={"P1": "Expert"})
 
 
 def test_manifest_records_locked_measures_in_reproducibility() -> None:

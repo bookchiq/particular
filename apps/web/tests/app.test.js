@@ -502,6 +502,97 @@ describe("director review UI", () => {
     );
   });
 
+  it("assigns a part to a tier and builds a mixed-tier set with that header", async () => {
+    const { generateBodies } = installFetchCapturing([
+      jsonResponse(true, successPayload()),
+      jsonResponse(
+        true,
+        successPayload({
+          payload: {
+            custom_set: {
+              url: "/artifacts/JOB123/custom.musicxml",
+              part_exports: [
+                {
+                  part_id: "P1",
+                  part_name: "Violin",
+                  tier: "Challenge",
+                  url: "/artifacts/JOB123/custom-P1.musicxml",
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    ]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    // No custom set yet, and the build button starts neutral.
+    expect(document.querySelector("#mixed-downloads").hidden).toBe(true);
+    expect(document.querySelector("#build-mixed").textContent).toBe(
+      "Build mixed-tier set",
+    );
+
+    // Reassign P1 to Challenge.
+    const select = document.querySelector('[data-tier-part="P1"]');
+    select.value = "Challenge";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(document.querySelector("#build-mixed").textContent).toBe(
+      "Build mixed-tier set (1 reassigned)",
+    );
+
+    // Building sends the assignment and renders the custom downloads.
+    document.querySelector("#build-mixed").click();
+    await vi.waitFor(() => expect(generateBodies).toHaveLength(2));
+    expect(
+      JSON.parse(generateBodies[1].headers["X-Particular-Tier-Assignments"]),
+    ).toEqual({ P1: "Challenge" });
+
+    await vi.waitFor(() =>
+      expect(document.querySelector("#mixed-downloads").hidden).toBe(false),
+    );
+    const links = [...document.querySelectorAll("#mixed-downloads a")];
+    expect(links[0].getAttribute("href")).toBe(
+      "/artifacts/JOB123/custom.musicxml",
+    );
+    expect(links[1].getAttribute("href")).toBe(
+      "/artifacts/JOB123/custom-P1.musicxml",
+    );
+    expect(links[1].textContent).toContain("Challenge");
+  });
+
+  it("clears tier assignments on a new upload", async () => {
+    const { generateBodies } = installFetchCapturing([
+      jsonResponse(true, successPayload()),
+      jsonResponse(true, successPayload()),
+    ]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    const select = document.querySelector('[data-tier-part="P1"]');
+    select.value = "Foundation";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(document.querySelector("#build-mixed").textContent).toContain(
+      "1 reassigned",
+    );
+
+    // A fresh upload resets assignments; its request carries an empty map.
+    selectFileAndBasis("another.musicxml");
+    submit();
+    await vi.waitFor(() => expect(generateBodies).toHaveLength(2));
+    expect(
+      JSON.parse(generateBodies[1].headers["X-Particular-Tier-Assignments"]),
+    ).toEqual({});
+  });
+
   it("ignores a stale earlier response so only the latest render wins", async () => {
     let resolveFirst;
     const first = new Promise((r) => {
