@@ -347,6 +347,28 @@ describe("director review UI", () => {
     );
   });
 
+  it("clears the shown arrangement when a different file is chosen", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    // Choosing a different file makes the shown result stale — it belongs to
+    // the previous score — so the workspace hides it and prompts the next step.
+    const fileInput = document.querySelector("#score-file");
+    Object.defineProperty(fileInput, "files", {
+      configurable: true,
+      value: [new File(["<score-partwise/>"], "other.musicxml")],
+    });
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(document.querySelector("#results").hidden).toBe(true);
+    expect(document.querySelector("#status").textContent).toContain("Ready");
+  });
+
   it("marks the selected tier with aria-selected on keyboard-activatable buttons", async () => {
     installFetch([jsonResponse(true, successPayload())]);
     await loadApp();
