@@ -357,12 +357,12 @@ class DemoHandler(BaseHTTPRequestHandler):
                     }
                     for part in analysis["parts"]
                 ]
-                for tier in ("Foundation", "Core", "Challenge")
+                for tier in ("Essential", "Supported", "Original")
             },
-            # Audition timelines: the normalized original alongside each tier.
+            # Audition timelines: the normalized source alongside each tier.
             "playback": {
                 label: f"/artifacts/{job_id}/" + playback_filename(label)
-                for label in ("Original", "Foundation", "Core", "Challenge")
+                for label in ("Source", "Essential", "Supported", "Original")
             },
         }
         # Print-ready PDFs exist only when MuseScore is on the host; otherwise the
@@ -381,7 +381,7 @@ class DemoHandler(BaseHTTPRequestHandler):
             "exports": (
                 {
                     label: f"/artifacts/{job_id}/" + pdf_filename(label)
-                    for label in ("Original", "Foundation", "Core", "Challenge")
+                    for label in ("Source", "Essential", "Supported", "Original")
                 }
                 if pdf_available
                 else {}
@@ -464,7 +464,7 @@ class DemoHandler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
         job_id, name = pieces[2], pieces[3]
-        # Accept a stable key (e.g. "foundation") or a part-export filename; the
+        # Accept a stable key (e.g. "essential") or a part-export filename; the
         # basename check keeps requests inside the job's artifact directory.
         artifact_filename = ARTIFACTS.get(name, name)
         if not artifact_filename or Path(artifact_filename).name != artifact_filename:

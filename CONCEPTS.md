@@ -14,7 +14,7 @@ Particular uses these terms consistently in code, APIs, documentation, and the i
 
 - **Instrument profile:** Versioned hard constraints and difficulty adjustments for an instrument, including written and sounding ranges, transposition, technique, and endurance considerations.
 - **Difficulty vector:** Explainable measurements of a passage's demands, such as range, density, rhythmic subdivision, leaps, endurance, articulations, and polyphony. It is not a universal grade.
-- **Tier profile:** Versioned targets and policies for one relative tier: **Foundation**, **Core**, or **Challenge**. The unchanged source remains available as **Original**, which is a comparison state rather than a generated tier.
+- **Tier profile:** Versioned targets and policies for one relative tier. Particular arranges by reduction only (see ADR 0002), so the tiers, from as-written to most accessible, are **Original**, **Supported**, and **Essential**. Original is the composer's full text and the top of the ladder; Supported is lightly eased; Essential is the most accessible playable version. The thresholds express how aggressively a tier simplifies, not a universal grade level.
 - **Operator:** A deterministic, versioned transformation that produces one or more alternatives from a passage while retaining provenance.
 - **Candidate:** A proposed passage-level result from an operator or constrained AI adapter. A candidate is not accepted output until all applicable validators approve it.
 - **Arrangement family:** A mutually compatible set of complete tiered scores generated from one source score, sharing form, landmarks, and musical alignment.

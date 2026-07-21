@@ -12,7 +12,7 @@ let lastFile = null;
 let lastBasis = null;
 // Measures the director locked against transformation, keyed "partId|measure".
 const lockedMeasures = new Set();
-// Per-part tier choice for the mixed-tier set, keyed by part id (Core default).
+// Per-part tier choice for the mixed-tier set, keyed by part id (Supported default).
 let tierAssignments = {};
 // Engraving state: the pinned notation library, the OSMD instance bound to the
 // preview container, whether the preview is showing, and which tier it shows.
@@ -21,7 +21,7 @@ const OSMD_SRC =
 let osmdLibraryPromise = null;
 let osmd = null;
 let notationOpen = false;
-let currentTier = "Foundation";
+let currentTier = "Essential";
 
 // Resolve the OSMD library, injecting the CDN script once. Tests preload
 // window.opensheetmusicdisplay so this resolves without any network use.
@@ -392,7 +392,7 @@ async function loadSamples() {
 }
 loadSamples();
 
-const TIERS = ["Foundation", "Core", "Challenge"];
+const TIERS = ["Essential", "Supported", "Original"];
 
 // Build the tier tablist following the ARIA Tabs pattern: one tab is selected
 // with tabindex 0, the rest are -1 (roving tabindex), and each controls the
@@ -559,7 +559,7 @@ function render(sourceName) {
   document.querySelector("#difficulty").innerHTML = payload.analysis.parts
     .map(
       (part) =>
-        `<details class="part" open><summary>${escapeHtml(part.part_name)} · ${escapeHtml(part.profile_id)} (${escapeHtml(part.profile_confidence)})</summary>${part.warning ? `<p>${escapeHtml(part.warning)}</p>` : ""}${part.profile_confidence === "ambiguous" ? `<label class="profile-override">Instrument profile <select data-part-id="${escapeHtml(part.part_id)}">${payload.analysis.available_instrument_profiles.map((profileId) => `<option value="${escapeHtml(profileId)}"${profileOverrides[part.part_id] === profileId ? " selected" : ""}>${escapeHtml(profileId)}</option>`).join("")}</select></label>` : ""}<label class="tier-assign">Mixed-set tier <select class="tier-select" data-tier-part="${escapeHtml(part.part_id)}">${TIERS.map((tier) => `<option value="${tier}"${(tierAssignments[part.part_id] || "Core") === tier ? " selected" : ""}>${tier}</option>`).join("")}</select></label><div class="metrics">${Object.entries(
+        `<details class="part" open><summary>${escapeHtml(part.part_name)} · ${escapeHtml(part.profile_id)} (${escapeHtml(part.profile_confidence)})</summary>${part.warning ? `<p>${escapeHtml(part.warning)}</p>` : ""}${part.profile_confidence === "ambiguous" ? `<label class="profile-override">Instrument profile <select data-part-id="${escapeHtml(part.part_id)}">${payload.analysis.available_instrument_profiles.map((profileId) => `<option value="${escapeHtml(profileId)}"${profileOverrides[part.part_id] === profileId ? " selected" : ""}>${escapeHtml(profileId)}</option>`).join("")}</select></label>` : ""}<label class="tier-assign">Mixed-set tier <select class="tier-select" data-tier-part="${escapeHtml(part.part_id)}">${TIERS.map((tier) => `<option value="${tier}"${(tierAssignments[part.part_id] || "Supported") === tier ? " selected" : ""}>${tier}</option>`).join("")}</select></label><div class="metrics">${Object.entries(
           labels,
         )
           .map(
@@ -583,10 +583,10 @@ function render(sourceName) {
     });
   });
   const names = {
-    original: "Normalized original",
-    foundation: "Foundation",
-    core: "Core",
-    challenge: "Challenge",
+    source: "Normalized source",
+    essential: "Essential",
+    supported: "Supported",
+    original: "Original",
     manifest: "Change manifest",
     analysis: "Difficulty analysis",
   };
@@ -654,7 +654,7 @@ function updateMixed() {
   const build = document.querySelector("#build-mixed");
   if (!build) return;
   const assigned = Object.entries(tierAssignments).filter(
-    ([, tier]) => tier && tier !== "Core",
+    ([, tier]) => tier && tier !== "Supported",
   ).length;
   build.textContent = assigned
     ? `Build mixed-tier set (${assigned} reassigned)`

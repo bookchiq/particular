@@ -84,10 +84,17 @@ def test_valid_generation_and_allowlisted_download(demo_server: tuple[str, int])
     assert len(payload["analysis"]["parts"]) == 4
     assert "violin" in payload["analysis"]["available_instrument_profiles"]
     artifacts = cast(dict[str, str], payload["artifacts"])
-    assert set(artifacts) == {"original", "foundation", "core", "challenge", "manifest", "analysis"}
+    assert set(artifacts) == {
+        "source",
+        "essential",
+        "supported",
+        "original",
+        "manifest",
+        "analysis",
+    }
 
     connection = http.client.HTTPConnection(*demo_server)
-    connection.request("GET", artifacts["foundation"])
+    connection.request("GET", artifacts["essential"])
     response = connection.getresponse()
     assert response.status == 200
     assert response.getheader("Content-Type") == "application/vnd.recordare.musicxml+xml"
@@ -146,10 +153,10 @@ def test_advertises_pdf_exports_when_musescore_is_present(
         status, payload = _post((str(address[0]), int(address[1])), FIXTURE.read_bytes())
         assert status == 200
         assert payload["pdf"]["available"] is True
-        assert set(payload["pdf"]["exports"]) == {"Original", "Foundation", "Core", "Challenge"}
+        assert set(payload["pdf"]["exports"]) == {"Source", "Essential", "Supported", "Original"}
 
         connection = http.client.HTTPConnection(str(address[0]), int(address[1]))
-        connection.request("GET", cast(str, payload["pdf"]["exports"]["Foundation"]))
+        connection.request("GET", cast(str, payload["pdf"]["exports"]["Essential"]))
         response = connection.getresponse()
         body = response.read()
         connection.close()
@@ -165,10 +172,10 @@ def test_advertises_pdf_exports_when_musescore_is_present(
 def test_serves_playback_timelines_for_original_and_tiers(demo_server: tuple[str, int]) -> None:
     status, payload = _post(demo_server, FIXTURE.read_bytes())
     assert status == 200
-    assert set(payload["playback"]) == {"Original", "Foundation", "Core", "Challenge"}
+    assert set(payload["playback"]) == {"Source", "Essential", "Supported", "Original"}
 
     connection = http.client.HTTPConnection(*demo_server)
-    connection.request("GET", cast(str, payload["playback"]["Foundation"]))
+    connection.request("GET", cast(str, payload["playback"]["Essential"]))
     response = connection.getresponse()
     timeline = cast(dict[str, Any], json.loads(response.read()))
     connection.close()
@@ -181,9 +188,7 @@ def test_serves_playback_timelines_for_original_and_tiers(demo_server: tuple[str
 
 
 def test_mixed_tier_set_includes_a_playback_timeline(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(
-        demo_server, FIXTURE.read_bytes(), tier_assignments={"P1": "Foundation"}
-    )
+    status, payload = _post(demo_server, FIXTURE.read_bytes(), tier_assignments={"P1": "Essential"})
     assert status == 200
     url = payload["custom_set"]["playback_url"]
 
@@ -201,15 +206,15 @@ def test_builds_and_serves_a_mixed_tier_set(demo_server: tuple[str, int]) -> Non
     status, payload = _post(
         demo_server,
         FIXTURE.read_bytes(),
-        tier_assignments={"P1": "Foundation", "P3": "Challenge"},
+        tier_assignments={"P1": "Essential", "P3": "Original"},
     )
 
     assert status == 200
     custom = payload["manifest"]["custom_arrangement"]
-    assert custom["assignments"] == {"P1": "Foundation", "P3": "Challenge"}
+    assert custom["assignments"] == {"P1": "Essential", "P3": "Original"}
     # Unassigned parts default to Core in the recorded per-part tiers.
     resolved = {part["part_id"]: part["tier"] for part in custom["parts"]}
-    assert resolved == {"P1": "Foundation", "P2": "Core", "P3": "Challenge", "P4": "Core"}
+    assert resolved == {"P1": "Essential", "P2": "Supported", "P3": "Original", "P4": "Supported"}
 
     custom_set = payload["custom_set"]
     assert {entry["part_id"] for entry in custom_set["part_exports"]} == {"P1", "P2", "P3", "P4"}
@@ -259,7 +264,7 @@ def test_evicts_oldest_completed_job(demo_server: tuple[str, int]) -> None:
         status, payload = _post(demo_server, FIXTURE.read_bytes())
         assert status == 200
         if index == 0:
-            first_download = cast(dict[str, str], payload["artifacts"])["foundation"]
+            first_download = cast(dict[str, str], payload["artifacts"])["essential"]
 
     assert first_download is not None
     connection = http.client.HTTPConnection(*demo_server)
@@ -447,7 +452,7 @@ def test_explicit_delete_makes_downloads_unavailable(demo_server: tuple[str, int
 def test_part_exports_are_listed_and_served_as_single_parts(demo_server: tuple[str, int]) -> None:
     status, payload = _post(demo_server, FIXTURE.read_bytes())
     assert status == 200
-    exports = payload["part_exports"]["Foundation"]
+    exports = payload["part_exports"]["Essential"]
     assert {entry["part_id"] for entry in exports} == {"P1", "P2", "P3", "P4"}
 
     connection = http.client.HTTPConnection(*demo_server)

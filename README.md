@@ -1,6 +1,6 @@
 # Particular
 
-Adaptive arrangements for mixed-ability ensembles. Particular turns one authorized MusicXML ensemble score into coordinated Foundation, Core, and Challenge parts that stay musically compatible — then lets a director review, adjust, and mix them part by part.
+Adaptive arrangements for mixed-ability ensembles. Particular turns one authorized MusicXML ensemble score into coordinated tiers — Original as written, plus reduced **Supported** and **Essential** parts — that stay musically compatible, then lets a director review, adjust, and mix them part by part.
 
 A deterministic engine does the arranging (re-runs are byte-identical and every change is auditable); the browser demo wraps it in a **score-aware review workspace**: a per-measure score map, per-part downloads, measure locks with targeted regeneration, mixed-tier sets that draw each part from its own tier, an engraved sheet-music preview, and in-browser audition playback. Generated parts are suggestions that require director review before rehearsal — the tool is explicit about that throughout. The [MVP plan](docs/plans/2026-07-18-001-feat-particular-mvp-plan.md) defines the original product contract and implementation sequence.
 
@@ -84,7 +84,7 @@ Open `http://127.0.0.1:8765`, attest that you are authorized to adapt the score,
 - **Difficulty & change ledger** — instrument-aware difficulty features per part and the accepted or rejected change ledger for each tier.
 - **Score map** — a per-measure grid per part; changed measures are highlighted and selectable to see exactly what happened.
 - **Measure locks** — lock the measures you approve and regenerate only the rest; locks are recorded in the audit manifest.
-- **Mixed-tier sets** — assign each part its own tier (a Foundation cello beside Core violins) and export one coordinated set.
+- **Mixed-tier sets** — assign each part its own tier (an Essential cello beside Supported violins) and export one coordinated set.
 - **Engraved preview** — render the selected tier as real sheet music.
 - **Audition** — play the original or any tier through a built-in synth, all parts together or one part solo.
 - **Downloads** — the normalized source, all three tiers, per-part and mixed-tier MusicXML, the analysis report, and the audit manifest.

@@ -15,7 +15,7 @@ server. Run it before release and after any change to `app.js`, `sequencer.js`,
 4. Select a rights basis, choose
    `evaluation/fixtures/mixed-ensemble-transposition.musicxml`, and submit.
 5. **Generation** — results appear with "Source: <filename>", four part-difficulty
-   cards, Foundation/Core/Challenge tabs, a bounded change ledger, and six download
+   cards, Essential/Supported/Original tabs, a bounded change ledger, and six download
    links. Switching tabs re-renders the ledger.
 6. **Deletion** — click "Delete these files"; the results hide with a "Deleted."
    message and every download link returns 404.

@@ -49,7 +49,7 @@ def test_tier_targets_are_ordered() -> None:
         (ROOT / "evaluation/fixtures/mixed-ensemble-transposition.musicxml").read_bytes()
     )
     targets = analyze_part(score.parts[0]).tier_targets
-    assert targets["Foundation"] < targets["Core"] < targets["Challenge"]
+    assert targets["Essential"] < targets["Supported"] < targets["Original"]
 
 
 @pytest.mark.parametrize(

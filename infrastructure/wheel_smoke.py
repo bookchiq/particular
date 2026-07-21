@@ -61,7 +61,12 @@ def check_generation() -> None:
         if status != 0:
             raise SystemExit(f"generation exited {status}")
         produced = {path.name for path in output.iterdir()}
-        expected = {"manifest.json", "foundation.musicxml", "core.musicxml", "challenge.musicxml"}
+        expected = {
+            "manifest.json",
+            "essential.musicxml",
+            "supported.musicxml",
+            "original.musicxml",
+        }
         if not expected <= produced:
             raise SystemExit(f"missing artifacts: {sorted(expected - produced)}")
 

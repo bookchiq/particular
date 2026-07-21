@@ -83,7 +83,7 @@ def _unchanged_family(score: Score) -> ArrangementFamily:
     targets = analyze_part(score.parts[0]).tier_targets
     tiers = tuple(
         TierScore(name, score, targets[name], "Unchanged test tier")
-        for name in ("Foundation", "Core", "Challenge")
+        for name in ("Essential", "Supported", "Original")
     )
     return ArrangementFamily(tiers, GenerationManifest(2, ()))
 
@@ -316,8 +316,8 @@ def test_run_thin_eases_a_fast_distinct_run_in_the_easier_tiers() -> None:
         if change.status == "accepted"
     }
     # The busy run is thinned in the most-supported tier but never in the top tier.
-    assert ("Foundation", "run-thin") in accepted
-    assert ("Challenge", "run-thin") not in accepted
+    assert ("Essential", "run-thin") in accepted
+    assert ("Original", "run-thin") not in accepted
     counts = [
         sum(
             event.kind == "note" and event.written_pitch is not None
@@ -379,9 +379,9 @@ def test_leap_fold_eases_wide_leaps_in_easier_tiers_without_changing_note_count(
         for change in family.manifest.changes
         if change.status == "accepted"
     }
-    assert ("Foundation", "leap-fold") in accepted
-    assert ("Core", "leap-fold") in accepted
-    assert ("Challenge", "leap-fold") not in accepted
+    assert ("Essential", "leap-fold") in accepted
+    assert ("Supported", "leap-fold") in accepted
+    assert ("Original", "leap-fold") not in accepted
 
     def widest_leap(tier_score: Score) -> int:
         pitches = [
@@ -456,8 +456,8 @@ def test_desyncopate_realigns_syncopation_without_adding_attacks() -> None:
         for change in family.manifest.changes
         if change.status == "accepted"
     }
-    assert ("Foundation", "desyncopate") in accepted
-    assert ("Challenge", "desyncopate") not in accepted
+    assert ("Essential", "desyncopate") in accepted
+    assert ("Original", "desyncopate") not in accepted
 
     def tie_starts(tier_score: Score) -> int:
         return sum(
@@ -501,8 +501,8 @@ def test_brandenburg_excerpt_shows_visible_reductions_and_round_trips() -> None:
 
     # Real repertoire exercises the reductive operators the trivial fixtures cannot:
     # the easiest tier reduces most, the top tier is left as written.
-    assert len(accepted("Foundation")) > len(accepted("Core")) > len(accepted("Challenge")) == 0
-    assert any(change.operator == "run-thin" for change in accepted("Foundation"))
+    assert len(accepted("Essential")) > len(accepted("Supported")) > len(accepted("Original")) == 0
+    assert any(change.operator == "run-thin" for change in accepted("Essential"))
 
     # Every tier round-trips through MusicXML export unchanged.
     for tier in family.tiers:
@@ -517,7 +517,7 @@ def test_family_is_deterministic_synchronized_and_round_trippable() -> None:
 
     assert first.manifest == second.manifest
     assert all(change.part_id and change.measure for change in first.manifest.changes)
-    assert [tier.name for tier in first.tiers] == ["Foundation", "Core", "Challenge"]
+    assert [tier.name for tier in first.tiers] == ["Essential", "Supported", "Original"]
     validate_family(strings, first)
     reparsed_tiers = []
     for tier in first.tiers:
@@ -543,9 +543,9 @@ def test_tier_policy_uses_passage_difficulty_to_create_ordered_variants() -> Non
         sum(
             change.status == "accepted" for change in family.manifest.changes if change.tier == tier
         )
-        for tier in ("Foundation", "Core", "Challenge")
+        for tier in ("Essential", "Supported", "Original")
     ] == [2, 1, 0]
-    assert family.tiers[2].explanation.startswith("Unchanged: Challenge retains source detail")
+    assert family.tiers[2].explanation.startswith("Unchanged: Original retains source detail")
     validate_family(source, family)
 
 
@@ -581,7 +581,7 @@ def test_compose_mixed_tier_draws_each_part_from_its_assigned_tier() -> None:
     strings, _ = _scores()
     family = generate_arrangement_family(strings)
     part_ids = [part.id for part in strings.parts]
-    assignments = {part_ids[0]: "Foundation", part_ids[1]: "Challenge"}
+    assignments = {part_ids[0]: "Essential", part_ids[1]: "Original"}
 
     mixed = compose_mixed_tier(family, assignments)
 
@@ -590,7 +590,7 @@ def test_compose_mixed_tier_draws_each_part_from_its_assigned_tier() -> None:
     challenge = {part.id: part for part in family.tiers[2].score.parts}
     mixed_parts = {part.id: part for part in mixed.parts}
 
-    # Assigned parts come from their tier; unassigned parts default to Core.
+    # Assigned parts come from their tier; unassigned parts default to Supported.
     assert mixed_parts[part_ids[0]] is foundation[part_ids[0]]
     assert mixed_parts[part_ids[1]] is challenge[part_ids[1]]
     for part_id in part_ids[2:]:
@@ -607,11 +607,11 @@ def test_manifest_records_custom_arrangement_without_touching_digest() -> None:
     family = generate_arrangement_family(source)
 
     baseline = generation_manifest(family, "sha256", source)
-    custom = generation_manifest(family, "sha256", source, tier_assignments={"P1": "Foundation"})
+    custom = generation_manifest(family, "sha256", source, tier_assignments={"P1": "Essential"})
 
     assert "custom_arrangement" not in baseline
-    assert custom["custom_arrangement"]["assignments"] == {"P1": "Foundation"}
-    assert custom["custom_arrangement"]["parts"] == [{"part_id": "P1", "tier": "Foundation"}]
+    assert custom["custom_arrangement"]["assignments"] == {"P1": "Essential"}
+    assert custom["custom_arrangement"]["parts"] == [{"part_id": "P1", "tier": "Essential"}]
     # Assignments only select among reproducible tiers, so the digest is stable.
     assert custom["reproducibility_digest"] == baseline["reproducibility_digest"]
 
@@ -621,7 +621,7 @@ def test_mixed_tier_rejects_unknown_part_and_tier() -> None:
     family = generate_arrangement_family(source)
 
     with pytest.raises(ValueError, match="unknown part"):
-        generation_manifest(family, "sha256", source, tier_assignments={"PX": "Core"})
+        generation_manifest(family, "sha256", source, tier_assignments={"PX": "Supported"})
     with pytest.raises(ValueError, match="unknown tier"):
         generation_manifest(family, "sha256", source, tier_assignments={"P1": "Expert"})
 
@@ -665,7 +665,7 @@ def test_change_summary_lists_accepted_and_aggregates_noops() -> None:
 
     manifest = generation_manifest(generate_arrangement_family(source), "sha256", source)
 
-    foundation = manifest["change_summary"]["Foundation"]
+    foundation = manifest["change_summary"]["Essential"]
     assert foundation["accepted"]
     sample = foundation["accepted"][0]
     assert {
@@ -701,12 +701,12 @@ def test_tier_policy_explains_unchanged_below_target_passage() -> None:
 
     assert all(tier.score == source for tier in family.tiers)
     assert family.tiers[0].explanation == (
-        "Unchanged: no safe candidate exceeded the 0.35 Foundation target."
+        "Unchanged: no safe candidate exceeded the 0.35 Essential target."
     )
     foundation_repetition = next(
         change
         for change in family.manifest.changes
-        if change.tier == "Foundation" and change.operator == "repetition-thin"
+        if change.tier == "Essential" and change.operator == "repetition-thin"
     )
     assert foundation_repetition.rejection_reason == (
         "passage pressure 0.12 does not exceed target 0.35"
@@ -734,7 +734,7 @@ def test_challenge_only_applies_typed_range_safety_correction() -> None:
     accepted = [
         change
         for change in family.manifest.changes
-        if change.tier == "Challenge" and change.status == "accepted"
+        if change.tier == "Original" and change.status == "accepted"
     ]
     assert [change.operator for change in accepted] == ["octave-range"]
     assert challenge.explanation == (
@@ -758,10 +758,10 @@ def test_overlapping_operators_resolve_consistently_across_tiers() -> None:
         for change in family.manifest.changes
         if change.operator in {"repetition-thin", "rhythm-merge"}
     }
-    assert statuses[("Foundation", "repetition-thin")] == "accepted"
-    assert statuses[("Core", "repetition-thin")] == "rejected"
-    assert statuses[("Foundation", "rhythm-merge")] == "rejected"
-    assert statuses[("Core", "rhythm-merge")] == "rejected"
+    assert statuses[("Essential", "repetition-thin")] == "accepted"
+    assert statuses[("Supported", "repetition-thin")] == "rejected"
+    assert statuses[("Essential", "rhythm-merge")] == "rejected"
+    assert statuses[("Supported", "rhythm-merge")] == "rejected"
 
 
 def test_hard_validator_rejects_duration_and_range_regressions() -> None:

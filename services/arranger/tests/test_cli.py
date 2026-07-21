@@ -19,14 +19,14 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
     produced = {path.name for path in output.iterdir()}
     assert {
         "analysis.json",
-        "challenge.musicxml",
-        "core.musicxml",
-        "foundation.musicxml",
+        "essential.musicxml",
+        "supported.musicxml",
+        "original.musicxml",
         "manifest.json",
-        "original-normalized.musicxml",
+        "source-normalized.musicxml",
     } <= produced
     # Per-part exports for every tier (the fixture has parts P1-P4).
-    assert {"foundation-P1.musicxml", "core-P4.musicxml", "challenge-P2.musicxml"} <= produced
+    assert {"essential-P1.musicxml", "supported-P4.musicxml", "original-P2.musicxml"} <= produced
     manifest = json.loads((output / "manifest.json").read_text())
     assert len(manifest["source_sha256"]) == 64
     assert manifest["engine_version"] == "0.0.0"
@@ -39,12 +39,12 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
         "rhythm-merge",
         "run-thin",
     }
-    assert manifest["tiers"][0]["name"] == "Foundation"
+    assert manifest["tiers"][0]["name"] == "Essential"
     assert manifest["tiers"][0]["target"] == 0.35
-    assert manifest["tiers"][2]["explanation"].startswith("Unchanged: Challenge")
+    assert manifest["tiers"][2]["explanation"].startswith("Unchanged: Original")
     summary = manifest["change_summary"]
-    assert set(summary) == {"Foundation", "Core", "Challenge"}
-    foundation = summary["Foundation"]
+    assert set(summary) == {"Essential", "Supported", "Original"}
+    foundation = summary["Essential"]
     assert set(foundation) == {"accepted", "rejected", "rejected_total", "noops"}
     assert isinstance(foundation["accepted"], list)
     assert isinstance(foundation["noops"]["count"], int)

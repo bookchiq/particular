@@ -64,9 +64,9 @@ class ArrangementFamily:
     manifest: GenerationManifest
 
 
-TIER_NAMES = ("Foundation", "Core", "Challenge")
+TIER_NAMES = ("Essential", "Supported", "Original")
 # Parts a director does not explicitly assign fall back to the middle tier.
-DEFAULT_TIER = "Core"
+DEFAULT_TIER = "Supported"
 
 
 def compose_mixed_tier(family: ArrangementFamily, assignments: dict[str, str]) -> Score:
@@ -138,9 +138,9 @@ def _tier_explanation(tier: str, target: float, selected: list[Candidate]) -> st
             f"Applied {target_count} safe transformation(s) where passage difficulty "
             f"exceeded the {target:.2f} {tier} target."
         )
-    if tier == "Challenge":
+    if tier == "Original":
         return (
-            "Unchanged: Challenge retains source detail unless an exceptional range "
+            "Unchanged: Original retains source detail unless an exceptional range "
             "correction is required."
         )
     return f"Unchanged: no safe candidate exceeded the {target:.2f} {tier} target."
@@ -207,7 +207,7 @@ def generate_arrangement_family(
             occupied.update(candidate.locators)
     changes: list[ManifestChange] = []
     tiers: list[TierScore] = []
-    for tier in ("Foundation", "Core", "Challenge"):
+    for tier in ("Essential", "Supported", "Original"):
         target = policy.targets[tier]
         selected: list[Candidate] = []
         for item in proposed:
@@ -226,7 +226,7 @@ def generate_arrangement_family(
                 reason = "overlaps a higher-priority candidate for this arrangement family"
             elif candidate.accepted:
                 reason = (
-                    "Challenge retains source detail for this operator"
+                    "Original retains source detail for this operator"
                     if tier not in candidate.tiers
                     else (
                         f"passage pressure {item.pressure:.2f} does not exceed target {target:.2f}"
