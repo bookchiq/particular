@@ -16,3 +16,6 @@ coverage/
 # Remnant of a broken local logging system
 .lattice/
 
+# Playwright MCP scratch output
+.playwright-mcp/
+

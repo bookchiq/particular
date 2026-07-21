@@ -37,6 +37,7 @@ def _post(
     filename: str = "score.musicxml",
     rights_basis: str | None = "authorized",
     profile_overrides: dict[str, str] | None = None,
+    locks: str | list[list[str]] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     connection = http.client.HTTPConnection(*address)
     headers = {"X-Particular-Filename": filename}
@@ -44,6 +45,8 @@ def _post(
         headers["X-Particular-Rights-Basis"] = rights_basis
     if profile_overrides is not None:
         headers["X-Particular-Instrument-Profiles"] = json.dumps(profile_overrides)
+    if locks is not None:
+        headers["X-Particular-Locks"] = locks if isinstance(locks, str) else json.dumps(locks)
     connection.request("POST", "/api/generate", body, headers)
     response = connection.getresponse()
     payload = cast(dict[str, Any], json.loads(response.read()))
@@ -85,6 +88,24 @@ def test_valid_generation_and_allowlisted_download(demo_server: tuple[str, int])
     assert response.getheader("Content-Type") == "application/vnd.recordare.musicxml+xml"
     assert b"score-partwise" in response.read()
     connection.close()
+
+
+def test_honors_locked_measures_and_records_them(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, FIXTURE.read_bytes(), locks=[["P1", "1"]])
+
+    assert status == 200
+    assert payload["manifest"]["reproducibility"]["locked_measures"] == [["P1", "1"]]
+    # No change of any kind is recorded for the locked measure.
+    changes = payload["manifest"]["change_summary"]
+    for tier in changes.values():
+        for record in [*tier["accepted"], *tier["rejected"]]:
+            assert (record["part_id"], record["measure"]) != ("P1", "1")
+
+
+def test_rejects_malformed_locked_measures(demo_server: tuple[str, int]) -> None:
+    status, payload = _post(demo_server, FIXTURE.read_bytes(), locks="not-json")
+    assert status == 400
+    assert "diagnostic_id" in payload
 
 
 def test_accepts_director_instrument_profile_override(demo_server: tuple[str, int]) -> None:

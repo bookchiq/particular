@@ -194,6 +194,23 @@ class DemoHandler(BaseHTTPRequestHandler):
             body["diagnostic_id"] = diagnostic_id
         self._json(status, body)
 
+    def _locked_measures(self) -> frozenset[tuple[str, str]]:
+        raw_locks = self.headers.get("X-Particular-Locks")
+        if raw_locks is None:
+            return frozenset()
+        try:
+            locks = json.loads(raw_locks)
+        except json.JSONDecodeError as error:
+            raise ValueError("locked measures must be JSON") from error
+        if not isinstance(locks, list) or not all(
+            isinstance(pair, list)
+            and len(pair) == 2
+            and all(isinstance(item, str) for item in pair)
+            for pair in locks
+        ):
+            raise ValueError("locked measures must be [part_id, measure] pairs")
+        return frozenset((pair[0], pair[1]) for pair in locks)
+
     def _profile_overrides(self) -> dict[str, str]:
         raw_overrides = self.headers.get("X-Particular-Instrument-Profiles")
         if raw_overrides is None:
@@ -248,7 +265,11 @@ class DemoHandler(BaseHTTPRequestHandler):
             output = job_root / "artifacts"
             # The uploader selected a valid rights basis at the gate above.
             generate_to_directory(
-                source, output, self._profile_overrides(), rights_basis=rights_basis
+                source,
+                output,
+                self._profile_overrides(),
+                rights_basis=rights_basis,
+                locked_measures=self._locked_measures(),
             )
             manifest = json.loads((output / ARTIFACTS["manifest"]).read_text())
             analysis = json.loads((output / ARTIFACTS["analysis"]).read_text())

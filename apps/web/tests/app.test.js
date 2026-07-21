@@ -123,6 +123,23 @@ function installFetch(generateResponses) {
   return { deletes };
 }
 
+// Like installFetch, but records each /api/generate request's options so tests
+// can assert on the headers sent (e.g. locked measures).
+function installFetchCapturing(generateResponses) {
+  const generateBodies = [];
+  global.fetch = vi.fn(async (url, options = {}) => {
+    if (url === "/api/limits") return jsonResponse(true, LIMITS);
+    if (url === "/api/generate") {
+      generateBodies.push({ headers: options.headers || {} });
+      return generateResponses.shift();
+    }
+    if (options.method === "DELETE")
+      return jsonResponse(true, { deleted: true });
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  return { generateBodies };
+}
+
 function selectFileAndBasis(name = "demo.musicxml", basis = "public_domain") {
   const fileInput = document.querySelector("#score-file");
   Object.defineProperty(fileInput, "files", {
@@ -403,6 +420,86 @@ describe("director review UI", () => {
     await vi.waitFor(() => expect(button.disabled).toBe(true));
     resolve(jsonResponse(true, successPayload()));
     await vi.waitFor(() => expect(button.disabled).toBe(false));
+  });
+
+  it("locks a measure, sends it on regeneration, and preserves it across tiers", async () => {
+    const { generateBodies } = installFetchCapturing([
+      jsonResponse(true, successPayload()),
+      jsonResponse(true, successPayload()),
+    ]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    // Regenerate is available and starts with no locks.
+    const regenerate = document.querySelector("#regenerate");
+    expect(regenerate.hidden).toBe(false);
+    expect(regenerate.textContent).toBe("Regenerate");
+
+    // Select a measure, then lock it via the detail toggle.
+    const cell = document.querySelector(
+      '#score-map .measure[data-measure="1"]',
+    );
+    cell.click();
+    const toggle = document.querySelector("#score-map-detail .lock-toggle");
+    expect(toggle.textContent).toContain("Lock");
+    toggle.click();
+
+    // The cell reflects the lock and the button now counts it.
+    expect(
+      document.querySelector('#score-map .measure[data-measure="1"]').classList,
+    ).toContain("locked");
+    expect(regenerate.textContent).toBe("Regenerate (1 locked)");
+
+    // The lock survives switching tiers.
+    const coreTab = [
+      ...document.querySelectorAll('#tier-tabs [role="tab"]'),
+    ].find((tab) => tab.textContent === "Core");
+    coreTab.click();
+    expect(
+      document.querySelector('#score-map .measure[data-measure="1"]').classList,
+    ).toContain("locked");
+
+    // Regenerating sends the locked measure to the server.
+    regenerate.click();
+    await vi.waitFor(() => expect(generateBodies).toHaveLength(2));
+    const locksHeader = generateBodies[1].headers["X-Particular-Locks"];
+    expect(JSON.parse(locksHeader)).toEqual([["P1", "1"]]);
+  });
+
+  it("clears locks when a new score is uploaded", async () => {
+    const { generateBodies } = installFetchCapturing([
+      jsonResponse(true, successPayload()),
+      jsonResponse(true, successPayload()),
+    ]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    document.querySelector('#score-map .measure[data-measure="1"]').click();
+    document.querySelector("#score-map-detail .lock-toggle").click();
+    expect(document.querySelector("#regenerate").textContent).toBe(
+      "Regenerate (1 locked)",
+    );
+
+    // A fresh upload resets locks; its request carries an empty lock list.
+    selectFileAndBasis("another.musicxml");
+    submit();
+    await vi.waitFor(() => expect(generateBodies).toHaveLength(2));
+    expect(JSON.parse(generateBodies[1].headers["X-Particular-Locks"])).toEqual(
+      [],
+    );
+    await vi.waitFor(() =>
+      expect(document.querySelector("#regenerate").textContent).toBe(
+        "Regenerate",
+      ),
+    );
   });
 
   it("ignores a stale earlier response so only the latest render wins", async () => {
