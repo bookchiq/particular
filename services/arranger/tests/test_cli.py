@@ -37,6 +37,7 @@ def test_generate_command_runs_full_pipeline(capsys: object, tmp_path: Path) -> 
         "leap-fold",
         "octave-range",
         "repetition-thin",
+        "rhythm-even",
         "rhythm-merge",
         "run-thin",
     }
