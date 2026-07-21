@@ -158,10 +158,13 @@ def validate_family(
         count = 0
         for part in tier.score.parts:
             for measure in part.measures:
+                # Count attacks, not note-heads: a tied continuation is the same
+                # note re-notated (e.g. by de-syncopation), not new material, so
+                # it must not count against a tier being "simpler" than another.
                 count += sum(
-                    event.kind == "note" and event.written_pitch is not None
+                    event.kind == "note" and event.written_pitch is not None and not event.tie_stop
                     for event in measure.events
                 )
         counts.append(count)
     if counts != sorted(counts):
-        raise ArrangementValidationError("tier note counts are not monotonic")
+        raise ArrangementValidationError("tier attack counts are not monotonic")

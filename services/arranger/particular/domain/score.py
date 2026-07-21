@@ -11,6 +11,10 @@ class SourceLocator:
     measure_number: str
     voice: str
     event_index: int
+    # Distinguishes pieces of one source event that a reduction re-notates as
+    # several tied events (e.g. de-syncopation splitting a note at the beat).
+    # 0 is the whole, unsplit event; 1, 2, ... are later tied continuations.
+    split_index: int = 0
 
 
 @dataclass(frozen=True)

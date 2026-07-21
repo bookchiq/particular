@@ -11,6 +11,7 @@ from particular.domain.score import Event, Measure, Part, Score, SourceLocator
 from particular.generation.candidates import Candidate
 from particular.generation.operators import (
     adjust_octave_range,
+    desyncopate,
     fold_large_leaps,
     reduce_rhythm,
     thin_repetitions,
@@ -117,6 +118,8 @@ def _candidate_pressure(candidate: Candidate, vector: DifficultyVector) -> float
         pressures.append(min(1.0, vector.rhythmic_complexity))
     if "largest_leap" in candidate.difficulty_delta:
         pressures.append(min(1.0, vector.largest_leap_semitones / 12.0))
+    if "syncopation" in candidate.difficulty_delta:
+        pressures.append(min(1.0, vector.syncopation))
     return max(pressures, default=0.0)
 
 
@@ -170,6 +173,7 @@ def generate_arrangement_family(
                 thin_repetitions(measure.events, protected),
                 thin_run(measure.events, protected, measure.divisions),
                 fold_large_leaps(measure.events, minimum, maximum, protected),
+                desyncopate(measure.events, protected, measure.divisions),
             )
             vector = analyze_part(replace(part, measures=(measure,)), profile_override).vector
             proposed.extend(
@@ -184,11 +188,18 @@ def generate_arrangement_family(
                 for candidate in candidates
             )
     proposed.sort(key=lambda item: item.candidate.id)
+    # Only candidates that can actually be selected for some tier compete for a
+    # measure's locators. A candidate whose pressure never clears even the most
+    # permissive (lowest) target will not be applied anywhere, so it must not
+    # reserve locators and block a stronger candidate that would apply.
+    lowest_target = min(policy.targets.values())
     occupied: set[SourceLocator] = set()
     conflicting: set[str] = set()
     for item in proposed:
         candidate = item.candidate
         if not candidate.accepted:
+            continue
+        if not candidate.required_for_safety and item.pressure <= lowest_target:
             continue
         if occupied.intersection(candidate.locators):
             conflicting.add(candidate.id)

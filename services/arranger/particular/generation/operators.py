@@ -313,3 +313,72 @@ def fold_large_leaps(
             True,
         )
     return _rejected(operator, events[:1], blocked_reason or "no over-octave leap to fold")
+
+
+def desyncopate(
+    events: tuple[Event, ...],
+    protected: frozenset[SourceLocator],
+    divisions: int,
+) -> Candidate:
+    """Re-notate a note tied across a beat as two beat-aligned notes.
+
+    A note that attacks off the beat and is held across the next beat is hard to
+    read and count. This splits it at that beat into two notes of the same pitch
+    joined by a tie: the sound is identical, but each piece now begins and can be
+    counted on a beat. It preserves onset coverage and total duration, and adds
+    only a tied continuation — not a new attack — so it leaves tier attack counts
+    unchanged.
+
+    The continuation piece keeps the source note's locator with a ``split_index``
+    of 1, so it still traces to the note it came from. Notes already inside a tie
+    chain, and protected notes, are left alone.
+    """
+
+    operator = "desyncopate"
+    blocked_reason: str | None = None
+    for event in events:
+        if event.kind != "note" or event.written_pitch is None:
+            continue
+        offset = event.onset % divisions
+        if offset == 0:
+            continue
+        beat_boundary = event.onset - offset + divisions
+        if event.onset + event.duration <= beat_boundary:
+            continue
+        if event.tie_start or event.tie_stop:
+            blocked_reason = blocked_reason or "tied notes cannot be de-syncopated safely"
+            continue
+        if event.locator in protected:
+            blocked_reason = blocked_reason or "protected role prevents de-syncopation"
+            continue
+        first_duration = beat_boundary - event.onset
+        second_duration = event.duration - first_duration
+        first_type = NOTE_TYPES.get(Fraction(first_duration, divisions))
+        second_type = NOTE_TYPES.get(Fraction(second_duration, divisions))
+        if first_type is None or second_type is None:
+            blocked_reason = blocked_reason or "split pieces have no supported note type"
+            continue
+        first = replace(event, duration=first_duration, note_type=first_type, tie_start=True)
+        second = replace(
+            event,
+            onset=beat_boundary,
+            duration=second_duration,
+            note_type=second_type,
+            tie_start=False,
+            tie_stop=True,
+            locator=replace(event.locator, split_index=1),
+        )
+        return Candidate(
+            candidate_id(operator, (event,)),
+            operator,
+            1,
+            ("Foundation", "Core"),
+            (event.locator,),
+            (event,),
+            (first, second),
+            {"syncopation": -1.0},
+            "A note tied across the beat was re-notated as two beat-aligned notes",
+            ("pitch, onset, and total duration retained",),
+            True,
+        )
+    return _rejected(operator, events[:1], blocked_reason or "no note is tied across a beat")
