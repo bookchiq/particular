@@ -26,9 +26,11 @@ from particular.application import (
     generate_to_directory,
     mixed_part_export_filename,
     part_export_filename,
+    pdf_filename,
     playback_filename,
 )
 from particular.errors import classify_error
+from particular.exporters.pdf import pdf_export_available
 from particular.importers.musicxml import MAX_EVENTS, MAX_PARTS
 from particular.importers.security import DEFAULT_ARCHIVE_LIMITS
 
@@ -338,6 +340,28 @@ class DemoHandler(BaseHTTPRequestHandler):
                 for label in ("Original", "Foundation", "Core", "Challenge")
             },
         }
+        # Print-ready PDFs exist only when MuseScore is on the host; otherwise the
+        # response says so explicitly so the browser can offer the fallback.
+        pdf_available = pdf_export_available()
+        response["pdf"] = {
+            "available": pdf_available,
+            "note": (
+                "Generated PDFs require director review before rehearsal."
+                if pdf_available
+                else (
+                    "PDF export needs MuseScore on the server. "
+                    "Use the MusicXML downloads or the engraved preview instead."
+                )
+            ),
+            "exports": (
+                {
+                    label: f"/artifacts/{job_id}/" + pdf_filename(label)
+                    for label in ("Original", "Foundation", "Core", "Challenge")
+                }
+                if pdf_available
+                else {}
+            ),
+        }
         # The mixed-tier set exists only when the director assigned tiers.
         custom = manifest.get("custom_arrangement")
         if custom is not None:
@@ -345,6 +369,9 @@ class DemoHandler(BaseHTTPRequestHandler):
             response["custom_set"] = {
                 "url": f"/artifacts/{job_id}/{MIXED_TIER_FILENAME}",
                 "playback_url": f"/artifacts/{job_id}/" + playback_filename("custom"),
+                "pdf_url": (
+                    f"/artifacts/{job_id}/" + pdf_filename("custom") if pdf_available else None
+                ),
                 "part_exports": [
                     {
                         "part_id": part["part_id"],
@@ -387,11 +414,12 @@ class DemoHandler(BaseHTTPRequestHandler):
         if artifact_body is None:
             self._error(HTTPStatus.NOT_FOUND, "not_found")
             return
-        content_type = (
-            "application/json"
-            if artifact_filename.endswith(".json")
-            else "application/vnd.recordare.musicxml+xml"
-        )
+        if artifact_filename.endswith(".json"):
+            content_type = "application/json"
+        elif artifact_filename.endswith(".pdf"):
+            content_type = "application/pdf"
+        else:
+            content_type = "application/vnd.recordare.musicxml+xml"
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(artifact_body)))

@@ -214,6 +214,26 @@ function renderAudition() {
   play.onclick = togglePlayback;
 }
 
+// Show print-ready PDF downloads when the server has MuseScore, or the explicit
+// fallback note (MusicXML / engraved preview) when it does not.
+function renderPdf() {
+  const note = document.querySelector("#pdf-note");
+  const downloads = document.querySelector("#pdf-downloads");
+  if (!note || !downloads) return;
+  const pdf = payload.pdf || { available: false, note: "" };
+  note.textContent = pdf.note || "";
+  const links = pdf.available
+    ? Object.entries(pdf.exports || {}).map(
+        ([label, url]) => `<a href="${url}">${escapeHtml(label)} PDF ↓</a>`,
+      )
+    : [];
+  if (pdf.available && payload.custom_set?.pdf_url) {
+    links.push(`<a href="${payload.custom_set.pdf_url}">Mixed-tier PDF ↓</a>`);
+  }
+  downloads.innerHTML = links.join("");
+  downloads.hidden = links.length === 0;
+}
+
 const labels = {
   pitch_range_semitones: "Range · semitones",
   largest_leap_semitones: "Largest leap",
@@ -539,6 +559,7 @@ function render(sourceName) {
   updateRegenerate();
   renderMixed();
   renderAudition();
+  renderPdf();
   const engrave = document.querySelector("#engrave");
   if (engrave) engrave.onclick = () => engraveTier(currentTier);
   // A fresh arrangement re-engraves the shown tier so the preview stays current.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib.metadata
 import json
@@ -20,6 +21,7 @@ from particular.exporters.musicxml import (
     export_part_musicxml,
     semantic_fingerprint,
 )
+from particular.exporters.pdf import PdfRenderError, find_musescore, render_pdf
 from particular.exporters.playback import playback_timeline
 from particular.generation.selector import (
     DEFAULT_TIER,
@@ -129,6 +131,12 @@ def playback_filename(source: str) -> str:
     """Stable filename for a source's deterministic playback timeline."""
 
     return f"{source.casefold()}.playback.json"
+
+
+def pdf_filename(source: str) -> str:
+    """Stable filename for a source's print-ready PDF (when MuseScore renders it)."""
+
+    return f"{source.casefold()}.pdf"
 
 
 def _validate_tier_assignments(
@@ -320,6 +328,10 @@ def generate_to_directory(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output_path.name}-", dir=output_path.parent))
     try:
+        # PDF export is opt-in on the host: render only when MuseScore is present,
+        # reusing the MusicXML bytes we already export. A render failure for one
+        # source is non-fatal — the MusicXML and other exports still publish.
+        musescore = find_musescore()
 
         def _write_playback(source: str, source_score: Score) -> None:
             (temporary / playback_filename(source)).write_text(
@@ -327,11 +339,18 @@ def generate_to_directory(
                 encoding="utf-8",
             )
 
-        (temporary / ARTIFACT_FILENAMES["original"]).write_bytes(export_musicxml(score))
+        def _write_source(source: str, musicxml: bytes, artifact: str) -> None:
+            (temporary / artifact).write_bytes(musicxml)
+            if musescore is not None:
+                with contextlib.suppress(PdfRenderError):
+                    (temporary / pdf_filename(source)).write_bytes(render_pdf(musicxml, musescore))
+
+        _write_source("original", export_musicxml(score), ARTIFACT_FILENAMES["original"])
         _write_playback("original", score)
         for tier in family.tiers:
-            artifact = ARTIFACT_FILENAMES[tier.name.casefold()]
-            (temporary / artifact).write_bytes(export_musicxml(tier.score))
+            _write_source(
+                tier.name, export_musicxml(tier.score), ARTIFACT_FILENAMES[tier.name.casefold()]
+            )
             _write_playback(tier.name, tier.score)
             for part in tier.score.parts:
                 (temporary / part_export_filename(tier.name, part.id)).write_bytes(
@@ -339,7 +358,7 @@ def generate_to_directory(
                 )
         if assignments:
             mixed = compose_mixed_tier(family, assignments)
-            (temporary / MIXED_TIER_FILENAME).write_bytes(export_musicxml(mixed))
+            _write_source("custom", export_musicxml(mixed), MIXED_TIER_FILENAME)
             _write_playback("custom", mixed)
             for part in mixed.parts:
                 (temporary / mixed_part_export_filename(part.id)).write_bytes(

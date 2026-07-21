@@ -80,7 +80,10 @@ Open `http://127.0.0.1:8765`, attest that you are authorized to adapt the score,
 - **Measure locks** — lock the measures you approve and regenerate only the rest; locks are recorded in the audit manifest.
 - **Mixed-tier sets** — assign each part its own tier (a Foundation cello beside Core violins) and export one coordinated set.
 - **Engraved preview** — render the selected tier as real sheet music.
+- **Audition** — play the original or any tier through a built-in synth, all parts together or one part solo.
 - **Downloads** — the normalized source, all three tiers, per-part and mixed-tier MusicXML, the analysis report, and the audit manifest.
+
+Print-ready **PDF export** is available when [MuseScore](https://musescore.org/) is installed on the host (set `PARTICULAR_MUSESCORE` to its path, or put it on `PATH`). When MuseScore is absent, the demo says so explicitly and points to the MusicXML downloads and the engraved preview instead — PDF is an optional enhancement, never a hard requirement.
 
 The demo binds to loopback only, stores up to eight completed jobs in private temporary storage, removes older artifacts as new jobs finish, deletes each job 30 minutes after it is created (enforced by a background sweep and before every download), supports an explicit "Delete these files" action, and clears everything when the server stops. Generated parts require director review before rehearsal or distribution.
 
