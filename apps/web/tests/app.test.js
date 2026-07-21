@@ -72,6 +72,12 @@ function successPayload(overrides = {}) {
       manifest: "/artifacts/JOB123/manifest",
       analysis: "/artifacts/JOB123/analysis",
     },
+    playback: {
+      Original: "/artifacts/JOB123/original.playback.json",
+      Foundation: "/artifacts/JOB123/foundation.playback.json",
+      Core: "/artifacts/JOB123/core.playback.json",
+      Challenge: "/artifacts/JOB123/challenge.playback.json",
+    },
     part_exports: {
       Foundation: [
         {
@@ -109,6 +115,71 @@ function jsonResponse(ok, payload) {
 
 const MUSICXML = "<score-partwise></score-partwise>";
 
+// A two-part timeline (P1: 2 notes, P2: 1 note) so part filtering is observable.
+const TIMELINE = {
+  tempo_bpm: 90,
+  seconds_per_quarter: 0.6667,
+  parts: [
+    {
+      part_id: "P1",
+      part_name: "Violin",
+      notes: [
+        { start: 0, duration: 0.5, midi: 60 },
+        { start: 0.5, duration: 0.5, midi: 64 },
+      ],
+    },
+    {
+      part_id: "P2",
+      part_name: "Viola",
+      notes: [{ start: 0, duration: 0.5, midi: 55 }],
+    },
+  ],
+};
+
+// Install a fake Web Audio API so playback scheduling runs without real audio.
+// Returns counters the test can assert on.
+function installAudio() {
+  const calls = { oscillators: 0, started: 0, stopped: 0 };
+  class FakeGain {
+    constructor() {
+      this.gain = { setValueAtTime() {}, linearRampToValueAtTime() {} };
+    }
+    connect(destination) {
+      return destination;
+    }
+  }
+  class FakeOscillator {
+    constructor() {
+      this.frequency = { value: 0 };
+    }
+    connect(node) {
+      return node;
+    }
+    start() {
+      calls.started += 1;
+    }
+    stop() {
+      calls.stopped += 1;
+    }
+  }
+  class FakeAudioContext {
+    constructor() {
+      this.currentTime = 0;
+      this.destination = {};
+    }
+    createOscillator() {
+      calls.oscillators += 1;
+      return new FakeOscillator();
+    }
+    createGain() {
+      return new FakeGain();
+    }
+    resume() {}
+  }
+  window.AudioContext = FakeAudioContext;
+  return calls;
+}
+
 // Install a fake OSMD library so engraving runs without any network or real
 // SVG layout. Returns a record of how it was driven.
 function installOsmd() {
@@ -138,6 +209,8 @@ function installFetch(generateResponses) {
     if (url === "/api/limits") return jsonResponse(true, LIMITS);
     if (url === "/api/generate") return generateResponses.shift();
     if (url.startsWith("/artifacts/") && options.method !== "DELETE") {
+      if (url.endsWith(".playback.json"))
+        return { ok: true, json: async () => TIMELINE };
       return { ok: true, text: async () => MUSICXML };
     }
     if (options.method === "DELETE") {
@@ -160,6 +233,8 @@ function installFetchCapturing(generateResponses) {
       return generateResponses.shift();
     }
     if (url.startsWith("/artifacts/") && options.method !== "DELETE") {
+      if (url.endsWith(".playback.json"))
+        return { ok: true, json: async () => TIMELINE };
       return { ok: true, text: async () => MUSICXML };
     }
     if (options.method === "DELETE")
@@ -195,6 +270,8 @@ beforeEach(() => {
   document.body.innerHTML = body;
   Element.prototype.scrollIntoView = () => {};
   delete window.opensheetmusicdisplay;
+  delete window.AudioContext;
+  delete window.webkitAudioContext;
 });
 
 describe("director review UI", () => {
@@ -684,6 +761,82 @@ describe("director review UI", () => {
       ),
     );
     expect(document.querySelector("#notation").innerHTML).toBe("");
+  });
+
+  it("auditions the selected tier and stops on a second click", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    const audio = installAudio();
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    // Source options include the original and every tier; default is the
+    // reviewed tier (Foundation).
+    const source = document.querySelector("#audition-source");
+    expect([...source.options].map((o) => o.textContent)).toEqual([
+      "Original",
+      "Foundation",
+      "Core",
+      "Challenge",
+    ]);
+    expect(source.selectedOptions[0].textContent).toBe("Foundation");
+
+    // Play schedules every note in the timeline (2 + 1 across two parts).
+    document.querySelector("#play").click();
+    await vi.waitFor(() => expect(audio.oscillators).toBe(3));
+    expect(document.querySelector("#play").textContent).toBe("Stop");
+    expect(document.querySelector("#playback-status").textContent).toContain(
+      "Playing Foundation",
+    );
+
+    // A second click stops each of the three active oscillators.
+    const stoppedWhilePlaying = audio.stopped;
+    document.querySelector("#play").click();
+    expect(audio.stopped - stoppedWhilePlaying).toBe(3);
+    expect(document.querySelector("#play").textContent).toBe("Play");
+    expect(document.querySelector("#playback-status").textContent).toBe(
+      "Stopped.",
+    );
+  });
+
+  it("solos a single part when one is selected", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    const audio = installAudio();
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    // Soloing P1 schedules only P1's two notes, not P2's.
+    document.querySelector("#audition-part").value = "P1";
+    document.querySelector("#play").click();
+    await vi.waitFor(() => expect(audio.oscillators).toBe(2));
+    expect(document.querySelector("#playback-status").textContent).toContain(
+      "Violin",
+    );
+  });
+
+  it("reports when Web Audio is unavailable", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    // No installAudio(): window.AudioContext stays undefined.
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    document.querySelector("#play").click();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#playback-status").textContent).toContain(
+        "Web Audio",
+      ),
+    );
   });
 
   it("ignores a stale earlier response so only the latest render wins", async () => {

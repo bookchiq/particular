@@ -76,6 +76,144 @@ async function engraveTier(tier) {
   }
 }
 
+// Playback state: a lazily-created AudioContext, the oscillators currently
+// scheduled, an auto-stop timer, and whether audio is playing.
+let audioContext = null;
+let activeOscillators = [];
+let playbackTimer = null;
+let playing = false;
+
+function audioContextClass() {
+  return window.AudioContext || window.webkitAudioContext;
+}
+
+function stopPlayback() {
+  playing = false;
+  if (playbackTimer) {
+    clearTimeout(playbackTimer);
+    playbackTimer = null;
+  }
+  for (const oscillator of activeOscillators) {
+    try {
+      oscillator.stop();
+    } catch {
+      // Already stopped or never started; nothing to do.
+    }
+  }
+  activeOscillators = [];
+  const play = document.querySelector("#play");
+  if (play) play.textContent = "Play";
+}
+
+// Schedule one note as a short synth tone with a soft attack and release so the
+// audition is clear without clicks. MIDI pitch → equal-tempered frequency.
+function scheduleNote(context, note, baseTime) {
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = "triangle";
+  oscillator.frequency.value = 440 * 2 ** ((note.midi - 69) / 12);
+  const start = baseTime + note.start;
+  const end = start + Math.max(note.duration, 0.05);
+  gain.gain.setValueAtTime(0, start);
+  gain.gain.linearRampToValueAtTime(0.18, start + 0.01);
+  gain.gain.linearRampToValueAtTime(0, end);
+  oscillator.connect(gain).connect(context.destination);
+  oscillator.start(start);
+  oscillator.stop(end + 0.02);
+  activeOscillators.push(oscillator);
+}
+
+async function startPlayback() {
+  const status = document.querySelector("#playback-status");
+  const Ctor = audioContextClass();
+  if (!Ctor) {
+    status.textContent =
+      "Playback needs Web Audio, which this browser doesn’t support.";
+    return;
+  }
+  const sourceSelect = document.querySelector("#audition-source");
+  const partSelect = document.querySelector("#audition-part");
+  const sourceLabel =
+    sourceSelect.selectedOptions[0]?.textContent ?? "arrangement";
+  const partId = partSelect.value;
+  const partLabel = partSelect.selectedOptions[0]?.textContent ?? "";
+  try {
+    const timeline = await (await fetch(sourceSelect.value)).json();
+    if (!audioContext) audioContext = new Ctor();
+    if (audioContext.resume) audioContext.resume();
+    const base = audioContext.currentTime + 0.06;
+    let end = 0;
+    const parts = timeline.parts.filter(
+      (part) => partId === "all" || part.part_id === partId,
+    );
+    for (const part of parts) {
+      for (const note of part.notes) {
+        scheduleNote(audioContext, note, base);
+        end = Math.max(end, note.start + note.duration);
+      }
+    }
+    if (end === 0) {
+      status.textContent = "This selection has no notes to play.";
+      return;
+    }
+    playing = true;
+    document.querySelector("#play").textContent = "Stop";
+    status.textContent =
+      partId === "all"
+        ? `Playing ${sourceLabel}.`
+        : `Playing ${sourceLabel} · ${partLabel}.`;
+    playbackTimer = setTimeout(
+      () => {
+        if (playing) {
+          stopPlayback();
+          status.textContent = "Finished.";
+        }
+      },
+      (end + 0.3) * 1000,
+    );
+  } catch {
+    stopPlayback();
+    status.textContent = "Couldn’t play this arrangement. Try again.";
+  }
+}
+
+function togglePlayback() {
+  if (playing) {
+    stopPlayback();
+    document.querySelector("#playback-status").textContent = "Stopped.";
+  } else {
+    startPlayback();
+  }
+}
+
+// Populate the audition source (original + tiers + mixed set) and part pickers,
+// defaulting the source to the tier currently under review.
+function renderAudition() {
+  const sourceSelect = document.querySelector("#audition-source");
+  const partSelect = document.querySelector("#audition-part");
+  const play = document.querySelector("#play");
+  if (!sourceSelect || !partSelect || !play) return;
+  const sources = { ...(payload.playback || {}) };
+  if (payload.custom_set?.playback_url) {
+    sources["Mixed-tier set"] = payload.custom_set.playback_url;
+  }
+  sourceSelect.innerHTML = Object.entries(sources)
+    .map(
+      ([label, url]) =>
+        `<option value="${url}"${label === currentTier ? " selected" : ""}>${escapeHtml(label)}</option>`,
+    )
+    .join("");
+  partSelect.innerHTML =
+    `<option value="all">All parts</option>` +
+    payload.analysis.parts
+      .map(
+        (part) =>
+          `<option value="${escapeHtml(part.part_id)}">${escapeHtml(part.part_name)}</option>`,
+      )
+      .join("");
+  play.onclick = togglePlayback;
+}
+
 const labels = {
   pitch_range_semitones: "Range · semitones",
   largest_leap_semitones: "Largest leap",
@@ -172,6 +310,9 @@ form.addEventListener("submit", (event) => {
   if (notation) notation.innerHTML = "";
   const notationStatus = document.querySelector("#notation-status");
   if (notationStatus) notationStatus.textContent = "";
+  stopPlayback(); // silence any audition from the previous score
+  const playbackStatus = document.querySelector("#playback-status");
+  if (playbackStatus) playbackStatus.textContent = "";
   runGeneration(file, basis.value);
 });
 
@@ -213,6 +354,12 @@ function selectTier(tier, { focus }) {
   renderChanges(tier);
   renderScoreMap(tier);
   if (notationOpen) engraveTier(tier);
+  // Keep the audition source aligned with the tier under review, unless audio
+  // is mid-playback (don't yank the source out from under a listener).
+  const sourceSelect = document.querySelector("#audition-source");
+  if (sourceSelect && !playing && payload?.playback?.[tier]) {
+    sourceSelect.value = payload.playback[tier];
+  }
 }
 
 // Index a tier's changes by part and measure so the score map can locate them.
@@ -391,6 +538,7 @@ function render(sourceName) {
   }
   updateRegenerate();
   renderMixed();
+  renderAudition();
   const engrave = document.querySelector("#engrave");
   if (engrave) engrave.onclick = () => engraveTier(currentTier);
   // A fresh arrangement re-engraves the shown tier so the preview stays current.

@@ -20,6 +20,7 @@ from particular.exporters.musicxml import (
     export_part_musicxml,
     semantic_fingerprint,
 )
+from particular.exporters.playback import playback_timeline
 from particular.generation.selector import (
     DEFAULT_TIER,
     TIER_NAMES,
@@ -117,6 +118,17 @@ def mixed_part_export_filename(part_id: str) -> str:
     """Stable filename for a single part of the mixed-tier custom set."""
 
     return f"custom-{part_id}.musicxml"
+
+
+# Playback timelines are published per source so the browser can audition any of
+# them; "original" and "custom" join the three tiers.
+PLAYBACK_SOURCES = ("original", "foundation", "core", "challenge")
+
+
+def playback_filename(source: str) -> str:
+    """Stable filename for a source's deterministic playback timeline."""
+
+    return f"{source.casefold()}.playback.json"
 
 
 def _validate_tier_assignments(
@@ -308,10 +320,19 @@ def generate_to_directory(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output_path.name}-", dir=output_path.parent))
     try:
+
+        def _write_playback(source: str, source_score: Score) -> None:
+            (temporary / playback_filename(source)).write_text(
+                json.dumps(playback_timeline(source_score), separators=(",", ":")),
+                encoding="utf-8",
+            )
+
         (temporary / ARTIFACT_FILENAMES["original"]).write_bytes(export_musicxml(score))
+        _write_playback("original", score)
         for tier in family.tiers:
             artifact = ARTIFACT_FILENAMES[tier.name.casefold()]
             (temporary / artifact).write_bytes(export_musicxml(tier.score))
+            _write_playback(tier.name, tier.score)
             for part in tier.score.parts:
                 (temporary / part_export_filename(tier.name, part.id)).write_bytes(
                     export_part_musicxml(tier.score, part.id)
@@ -319,6 +340,7 @@ def generate_to_directory(
         if assignments:
             mixed = compose_mixed_tier(family, assignments)
             (temporary / MIXED_TIER_FILENAME).write_bytes(export_musicxml(mixed))
+            _write_playback("custom", mixed)
             for part in mixed.parts:
                 (temporary / mixed_part_export_filename(part.id)).write_bytes(
                     export_part_musicxml(mixed, part.id)
