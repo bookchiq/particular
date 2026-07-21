@@ -335,7 +335,7 @@ describe("director review UI", () => {
 
     // Essential defaults to the no-op summary.
     expect(document.querySelector("#changes").textContent).toContain(
-      "found no applicable change",
+      "Nothing in this tier needed easing",
     );
 
     const coreTab = [

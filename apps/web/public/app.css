@@ -625,3 +625,10 @@ button.sample span {
   font-size: 0.78rem;
   color: var(--muted);
 }
+
+/* Difficulty-direction hint under the tier tabs. */
+.tier-hint {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}

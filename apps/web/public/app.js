@@ -696,10 +696,10 @@ function changeArticle(change) {
 
 function renderNoops(noops) {
   if (!noops || !noops.count) return "";
-  const byOperator = Object.entries(noops.by_operator)
-    .map(([operator, count]) => `${escapeHtml(operator)}: ${count}`)
-    .join(", ");
-  return `<p class="ledger-note">${noops.count} candidate${noops.count === 1 ? "" : "s"} found no applicable change${byOperator ? ` (${byOperator})` : ""}.</p>`;
+  // A director doesn't need the engine's internal operator tallies; the plain
+  // meaning is that this tier left this passage as written. The full per-operator
+  // breakdown stays in the downloadable change manifest for anyone who wants it.
+  return `<p class="ledger-note">Nothing in this tier needed easing here — the passage was already within reach.</p>`;
 }
 
 function renderChanges(tier) {
