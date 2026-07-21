@@ -1,8 +1,14 @@
 # Particular
 
-Adaptive arrangements for mixed-ability ensembles. Particular turns one authorized MusicXML ensemble score into coordinated tiers — Original as written, plus reduced **Supported** and **Essential** parts — that stay musically compatible, then lets a director review, adjust, and mix them part by part.
+**Turn one score into parts your whole ensemble can actually play.**
 
-A deterministic engine does the arranging (re-runs are byte-identical and every change is auditable); the browser demo wraps it in a **score-aware review workspace**: a per-measure score map, per-part downloads, measure locks with targeted regeneration, mixed-tier sets that draw each part from its own tier, an engraved sheet-music preview, and in-browser audition playback. Generated parts are suggestions that require director review before rehearsal — the tool is explicit about that throughout. The [MVP plan](docs/plans/2026-07-18-001-feat-particular-mvp-plan.md) defines the original product contract and implementation sequence.
+Community and school ensembles are mixed-ability by nature — the same piece can be just right for your front stand and out of reach for your newest players. Particular takes one MusicXML score and produces **coordinated, progressively simpler versions of each part**, so a beginner and a veteran can read different parts and still play the same music together.
+
+**Who it's for:** directors of community bands and orchestras, school and youth ensembles, and other mixed-ability groups — anyone who arranges around the players they actually have. You review every change and decide what reaches the stand.
+
+**How it works, briefly.** Particular only ever _simplifies_. From the score as written (**Original**) it derives a lightly-eased **Supported** part and a most-accessible **Essential** part, keeping every version rhythmically and harmonically aligned so the tiers can be played side by side. A deterministic engine does the arranging — re-runs are byte-identical and every change is auditable — and you can mix tiers per part (an Essential cello beside Supported violins). See [CONCEPTS.md](CONCEPTS.md) for the vocabulary and [ADR 0002](docs/architecture/0002-reduction-only-tiers.md) for why it reduces only.
+
+> **Project status — early, developer-run preview.** Particular runs **locally**: there is no hosted version yet, so you start it on your own machine (see [Setup](#setup)). The deterministic engine, the CLI, and the browser review workspace all work today. The honest caveat: **no generated arrangement has yet been judged by a working musician**, so treat every output as a suggestion to review, not a finished edition — validating real rehearsal-usability with directors is the current priority ([#1](https://github.com/bookchiq/particular/issues/1)).
 
 ## See it in action
 
@@ -10,12 +16,18 @@ A deterministic engine does the arranging (re-runs are byte-identical and every 
 
 Upload an authorized score → review the per-measure score map → lock a measure → engrave the tier as sheet music → audition it → assign each part its own tier → download the coordinated mixed set. (Recorded against the local demo; PDF export appears here as its explicit fallback because MuseScore was not installed.)
 
-## Provenance
+### What a tier actually changes
 
-Particular was built at a hackathon. The work up to and including commit `4fd0e5a` was authored by OpenAI Codex; everything after that line is later work by Sarah Lewis with Claude (Anthropic). Two records keep that line verifiable:
+A concrete example. Take a busy inner part — a run of sixteenth notes under the melody:
 
-- [Codex authorship boundary](docs/provenance/codex-authorship-boundary.md) — exactly what Codex built, decided, and deliberately left undone.
-- [Post-boundary work](docs/provenance/post-boundary-work.md) — every PR built after the line, mapped to the issues it closes, and what remains honestly not-done (notably: no arrangement has yet been judged by a human musician).
+- **Original** keeps it as written.
+- **Essential** thins the run to fewer, longer notes on the beat, so a less-advanced player reads eighth notes instead of sixteenths — while the downbeats, the harmony, and the total length of the passage stay put, so the part still locks in with everyone else.
+
+On the bundled CC0 Brandenburg No. 3 excerpt, Essential applies 42 such reductions across the ensemble and Supported applies 15, while Original is left exactly as written. Particular never _adds_ notes and never makes a part harder — it only eases.
+
+## A note on rights and authorization
+
+Arranging someone else's music — even simplifying it — is a use that usually needs the rightsholder's permission, quite apart from Particular. That's why the tool asks you to attest that a score is **your own work, in the public domain, or one you're licensed to adapt** before it will process it. The attestation is there to keep _you_ on the right side of that line and to keep this repository free of material it shouldn't hold — not to create busywork. See [rights and privacy](docs/product/rights-and-privacy.md).
 
 ## Repository layout
 
@@ -79,7 +91,7 @@ Start the hackathon interface:
 uv run python -m particular.demo
 ```
 
-Open `http://127.0.0.1:8765`, attest that you are authorized to adapt the score, and upload MusicXML. The interface is a director-facing review workspace:
+Open `http://127.0.0.1:8765`. Either click **"Try a curated sample"** to load the bundled CC0 Brandenburg No. 3 excerpt with one click, or attest that you are authorized to adapt your own score and upload MusicXML. The interface is a director-facing review workspace:
 
 - **Difficulty & change ledger** — instrument-aware difficulty features per part and the accepted or rejected change ledger for each tier.
 - **Score map** — a per-measure grid per part; changed measures are highlighted and selectable to see exactly what happened.
@@ -94,6 +106,13 @@ Print-ready **PDF export** is available when [MuseScore](https://musescore.org/)
 The demo binds to loopback only, stores up to eight completed jobs in private temporary storage, removes older artifacts as new jobs finish, deletes each job 30 minutes after it is created (enforced by a background sweep and before every download), supports an explicit "Delete these files" action, and clears everything when the server stops. Generated parts require director review before rehearsal or distribution.
 
 The engine and CLI make **no remote requests of any kind**. The browser demo is the same, with one deliberate exception: the engraved preview loads the [OpenSheetMusicDisplay](https://opensheetmusicdisplay.org/) rendering library from a CDN the first time you use it. Your score is still engraved locally in the browser and is never uploaded, and the rest of the workspace works offline.
+
+## Provenance
+
+Particular was built at a hackathon. The work up to and including commit `4fd0e5a` was authored by OpenAI Codex; everything after that line is later work by Sarah Lewis with Claude (Anthropic). Two records keep that line verifiable:
+
+- [Codex authorship boundary](docs/provenance/codex-authorship-boundary.md) — exactly what Codex built, decided, and deliberately left undone.
+- [Post-boundary work](docs/provenance/post-boundary-work.md) — every PR built after the line, mapped to the issues it closes, and what remains honestly not-done.
 
 ## Contributing
 
