@@ -44,11 +44,14 @@ def _post(
     profile_overrides: dict[str, str] | None = None,
     locks: str | list[list[str]] | None = None,
     tier_assignments: str | dict[str, str] | None = None,
-) -> tuple[int, dict[str, Any]]:
+    cookie: str | None = None,
+) -> tuple[int, dict[str, Any], str | None]:
     connection = http.client.HTTPConnection(*address)
     headers = {"X-Particular-Filename": filename}
     if rights_basis is not None:
         headers["X-Particular-Rights-Basis"] = rights_basis
+    if cookie is not None:
+        headers["Cookie"] = cookie
     if profile_overrides is not None:
         headers["X-Particular-Instrument-Profiles"] = json.dumps(profile_overrides)
     if locks is not None:
@@ -59,31 +62,33 @@ def _post(
         )
     connection.request("POST", "/api/generate", body, headers)
     response = connection.getresponse()
+    set_cookie = response.getheader("Set-Cookie")
     payload = cast(dict[str, Any], json.loads(response.read()))
     connection.close()
-    return response.status, payload
+    session = set_cookie.split(";", 1)[0] if set_cookie else None
+    return response.status, payload, session
 
 
 def test_requires_rights_attestation(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes(), rights_basis=None)
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes(), rights_basis=None)
     assert status == 403
     assert payload["error"] == "rights_attestation_required"
 
 
 def test_rejects_unknown_rights_basis(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes(), rights_basis="whatever")
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes(), rights_basis="whatever")
     assert status == 403
     assert payload["error"] == "rights_attestation_required"
 
 
 def test_records_selected_rights_basis(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes(), rights_basis="public_domain")
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes(), rights_basis="public_domain")
     assert status == 200
     assert payload["manifest"]["operational"]["attestation"]["basis"] == "public_domain"
 
 
 def test_valid_generation_and_allowlisted_download(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes())
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes())
     assert status == 200
     assert payload["review_required"] is True
     assert len(payload["analysis"]["parts"]) == 4
@@ -108,7 +113,7 @@ def test_valid_generation_and_allowlisted_download(demo_server: tuple[str, int])
 
 
 def test_honors_locked_measures_and_records_them(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes(), locks=[["P1", "1"]])
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes(), locks=[["P1", "1"]])
 
     assert status == 200
     assert payload["manifest"]["reproducibility"]["locked_measures"] == [["P1", "1"]]
@@ -120,7 +125,7 @@ def test_honors_locked_measures_and_records_them(demo_server: tuple[str, int]) -
 
 
 def test_rejects_malformed_locked_measures(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes(), locks="not-json")
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes(), locks="not-json")
     assert status == 400
     assert "diagnostic_id" in payload
 
@@ -130,7 +135,7 @@ def test_reports_pdf_export_fallback_without_musescore(
 ) -> None:
     # No MuseScore on PATH → the response advertises the explicit fallback.
     monkeypatch.setenv("PARTICULAR_MUSESCORE", "/no/such/musescore")
-    status, payload = _post(demo_server, FIXTURE.read_bytes())
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes())
 
     assert status == 200
     assert payload["pdf"]["available"] is False
@@ -155,7 +160,7 @@ def test_advertises_pdf_exports_when_musescore_is_present(
     thread.start()
     address = cast(tuple[str, int], server.server_address)
     try:
-        status, payload = _post((str(address[0]), int(address[1])), FIXTURE.read_bytes())
+        status, payload, _ = _post((str(address[0]), int(address[1])), FIXTURE.read_bytes())
         assert status == 200
         assert payload["pdf"]["available"] is True
         assert set(payload["pdf"]["exports"]) == {"Source", "Essential", "Supported", "Original"}
@@ -175,7 +180,7 @@ def test_advertises_pdf_exports_when_musescore_is_present(
 
 
 def test_serves_playback_timelines_for_original_and_tiers(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes())
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes())
     assert status == 200
     assert set(payload["playback"]) == {"Source", "Essential", "Supported", "Original"}
 
@@ -193,7 +198,9 @@ def test_serves_playback_timelines_for_original_and_tiers(demo_server: tuple[str
 
 
 def test_mixed_tier_set_includes_a_playback_timeline(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes(), tier_assignments={"P1": "Essential"})
+    status, payload, _ = _post(
+        demo_server, FIXTURE.read_bytes(), tier_assignments={"P1": "Essential"}
+    )
     assert status == 200
     url = payload["custom_set"]["playback_url"]
 
@@ -208,7 +215,7 @@ def test_mixed_tier_set_includes_a_playback_timeline(demo_server: tuple[str, int
 
 
 def test_builds_and_serves_a_mixed_tier_set(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(
+    status, payload, _ = _post(
         demo_server,
         FIXTURE.read_bytes(),
         tier_assignments={"P1": "Essential", "P3": "Original"},
@@ -238,26 +245,26 @@ def test_builds_and_serves_a_mixed_tier_set(demo_server: tuple[str, int]) -> Non
 
 
 def test_omits_custom_set_without_tier_assignments(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes())
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes())
     assert status == 200
     assert "custom_set" not in payload
     assert "custom_arrangement" not in payload["manifest"]
 
 
 def test_rejects_malformed_tier_assignments(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes(), tier_assignments="not-json")
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes(), tier_assignments="not-json")
     assert status == 400
     assert "diagnostic_id" in payload
 
 
 def test_rejects_unknown_tier_in_assignments(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes(), tier_assignments={"P1": "Expert"})
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes(), tier_assignments={"P1": "Expert"})
     assert status == 400
     assert "diagnostic_id" in payload
 
 
 def test_accepts_director_instrument_profile_override(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes(), profile_overrides={"P1": "viola"})
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes(), profile_overrides={"P1": "viola"})
 
     assert status == 200
     assert payload["analysis"]["parts"][0]["profile_confidence"] == "director-override"
@@ -266,7 +273,7 @@ def test_accepts_director_instrument_profile_override(demo_server: tuple[str, in
 def test_evicts_oldest_completed_job(demo_server: tuple[str, int]) -> None:
     first_download: str | None = None
     for index in range(MAX_JOBS + 1):
-        status, payload = _post(demo_server, FIXTURE.read_bytes())
+        status, payload, _ = _post(demo_server, FIXTURE.read_bytes())
         assert status == 200
         if index == 0:
             first_download = cast(dict[str, str], payload["artifacts"])["essential"]
@@ -304,7 +311,7 @@ def test_rejects_oversize_and_unsupported_filename(demo_server: tuple[str, int])
     response.read()
     connection.close()
 
-    status, _ = _post(demo_server, b"score", filename="score.mid")
+    status, _, _ = _post(demo_server, b"score", filename="score.mid")
     assert status == 415
 
 
@@ -317,7 +324,7 @@ def _mxl(entries: dict[str, bytes]) -> bytes:
 
 
 def test_malformed_score_returns_structured_error(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, b"<score-partwise>")
+    status, payload, _ = _post(demo_server, b"<score-partwise>")
     assert status == 400
     assert payload["error"] == "malformed_score"
     assert payload["message"]
@@ -326,7 +333,7 @@ def test_malformed_score_returns_structured_error(demo_server: tuple[str, int]) 
 
 
 def test_unsafe_archive_upload_is_sanitized(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, _mxl({"nested.zip": b"zip"}), filename="score.mxl")
+    status, payload, _ = _post(demo_server, _mxl({"nested.zip": b"zip"}), filename="score.mxl")
     assert status == 400
     assert payload["error"] == "unsafe_archive"
     assert "diagnostic_id" in payload
@@ -334,7 +341,7 @@ def test_unsafe_archive_upload_is_sanitized(demo_server: tuple[str, int]) -> Non
 
 
 def test_oversized_archive_upload_is_sanitized(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(
+    status, payload, _ = _post(
         demo_server, _mxl({f"f{index}.xml": b"x" for index in range(65)}), filename="score.mxl"
     )
     assert status == 400
@@ -367,10 +374,10 @@ def test_expired_jobs_are_purged_before_lookup() -> None:
         artifacts = server.storage_root / "job1" / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "manifest.json").write_text("{}")
-        server.register_job("job1", artifacts)
+        server.register_job("job1", artifacts, "owner-a")
 
         # A zero-second TTL means the next lookup finds the job expired.
-        assert server.read_artifact("job1", "manifest.json") is None
+        assert server.read_artifact("job1", "manifest.json", "owner-a") is None
         assert not artifacts.parent.exists()
     finally:
         server.server_close()
@@ -382,12 +389,16 @@ def test_explicit_delete_removes_a_job() -> None:
         artifacts = server.storage_root / "job1" / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "manifest.json").write_bytes(b"{}")
-        server.register_job("job1", artifacts)
+        server.register_job("job1", artifacts, "owner-a")
 
-        assert server.read_artifact("job1", "manifest.json") == b"{}"
-        assert server.delete_job("job1") is True
-        assert server.read_artifact("job1", "manifest.json") is None
-        assert server.delete_job("job1") is False
+        # A different owner can neither read nor delete another owner's job.
+        assert server.read_artifact("job1", "manifest.json", "owner-b") is None
+        assert server.delete_job("job1", "owner-b") is False
+
+        assert server.read_artifact("job1", "manifest.json", "owner-a") == b"{}"
+        assert server.delete_job("job1", "owner-a") is True
+        assert server.read_artifact("job1", "manifest.json", "owner-a") is None
+        assert server.delete_job("job1", "owner-a") is False
     finally:
         server.server_close()
 
@@ -409,20 +420,20 @@ def test_concurrent_delete_and_download_is_all_or_nothing() -> None:
         artifacts.mkdir(parents=True)
         content = b"x" * 100_000
         (artifacts / "manifest.json").write_bytes(content)
-        server.register_job("job1", artifacts)
+        server.register_job("job1", artifacts, "owner-a")
 
         reads: list[bytes | None] = []
 
         def reader() -> None:
             while True:
-                body = server.read_artifact("job1", "manifest.json")
+                body = server.read_artifact("job1", "manifest.json", "owner-a")
                 reads.append(body)
                 if body is None:
                     return
 
         thread = threading.Thread(target=reader)
         thread.start()
-        server.delete_job("job1")
+        server.delete_job("job1", "owner-a")
         thread.join()
 
         # A read never sees a torn file: it is the whole artifact or nothing.
@@ -433,13 +444,14 @@ def test_concurrent_delete_and_download_is_all_or_nothing() -> None:
 
 
 def test_explicit_delete_makes_downloads_unavailable(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes())
+    status, payload, cookie = _post(demo_server, FIXTURE.read_bytes())
     assert status == 200
+    assert cookie is not None  # the server set a session principal
     job_id = payload["job_id"]
     download = cast(dict[str, str], payload["artifacts"])["manifest"]
 
     connection = http.client.HTTPConnection(*demo_server)
-    connection.request("DELETE", f"/artifacts/{job_id}")
+    connection.request("DELETE", f"/artifacts/{job_id}", headers={"Cookie": cookie})
     delete_response = connection.getresponse()
     delete_body = json.loads(delete_response.read())
     connection.close()
@@ -455,7 +467,7 @@ def test_explicit_delete_makes_downloads_unavailable(demo_server: tuple[str, int
 
 
 def test_part_exports_are_listed_and_served_as_single_parts(demo_server: tuple[str, int]) -> None:
-    status, payload = _post(demo_server, FIXTURE.read_bytes())
+    status, payload, _ = _post(demo_server, FIXTURE.read_bytes())
     assert status == 200
     exports = payload["part_exports"]["Essential"]
     assert {entry["part_id"] for entry in exports} == {"P1", "P2", "P3", "P4"}
@@ -514,7 +526,7 @@ def test_lists_and_serves_bundled_sample_scores(demo_server: tuple[str, int]) ->
     assert served == fixture
 
     # The sample regenerates through the normal generation path.
-    generate_status, payload = _post(
+    generate_status, payload, _ = _post(
         demo_server,
         served,
         filename="brandenburg-no3-mvt3-excerpt.musicxml",
@@ -556,3 +568,42 @@ def test_create_server_allows_non_loopback_when_explicitly_acknowledged() -> Non
         assert cast(tuple[str, int], server.server_address)[0] == "0.0.0.0"
     finally:
         server.server_close()
+
+
+def test_one_session_cannot_delete_or_forge_anothers_artifacts(
+    demo_server: tuple[str, int],
+) -> None:
+    # Session A creates a job and receives a signed session cookie.
+    status, payload, cookie_a = _post(demo_server, FIXTURE.read_bytes())
+    assert status == 200 and cookie_a is not None
+    job_id = payload["job_id"]
+    signed_url = cast(dict[str, str], payload["artifacts"])["manifest"]
+
+    # Session B is a different principal.
+    _, _, cookie_b = _post(demo_server, FIXTURE.read_bytes())
+    assert cookie_b is not None and cookie_b != cookie_a
+
+    # B cannot delete A's job — it is reported absent, and A's job survives.
+    connection = http.client.HTTPConnection(*demo_server)
+    connection.request("DELETE", f"/artifacts/{job_id}", headers={"Cookie": cookie_b})
+    response = connection.getresponse()
+    response.read()
+    connection.close()
+    assert response.status == 404
+
+    # A's signed artifact URL still resolves (the token authorizes it).
+    connection = http.client.HTTPConnection(*demo_server)
+    connection.request("GET", signed_url)
+    response = connection.getresponse()
+    response.read()
+    connection.close()
+    assert response.status == 200
+
+    # The same artifact without a valid token, and with a tampered token, is refused.
+    for path in (f"/artifacts/{job_id}/manifest", f"/artifacts/{job_id}/manifest?token=forged"):
+        connection = http.client.HTTPConnection(*demo_server)
+        connection.request("GET", path)
+        response = connection.getresponse()
+        response.read()
+        connection.close()
+        assert response.status == 404
