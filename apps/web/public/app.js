@@ -342,6 +342,20 @@ form.addEventListener("submit", (event) => {
   beginGeneration(file, basis.value);
 });
 
+// Choosing a new file makes any shown arrangement stale (it belongs to the
+// previous score). Clear it so the workspace never shows an old result beside a
+// new filename, and prompt the next step.
+document.querySelector("#score-file").addEventListener("change", () => {
+  const file = document.querySelector("#score-file").files[0];
+  if (!results.hidden) {
+    results.hidden = true;
+    stopPlayback();
+  }
+  statusLine.textContent = file
+    ? "Ready — confirm your authorization and select “Create particular parts.”"
+    : "";
+});
+
 async function loadSample(sample, button) {
   button.disabled = true;
   try {
