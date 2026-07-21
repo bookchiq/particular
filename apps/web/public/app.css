@@ -639,3 +639,21 @@ button.sample span {
   font-size: 0.82rem;
   color: var(--muted);
 }
+
+/* Audition playhead: a seekable position bar with an elapsed / total readout. */
+.audition-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+.audition-progress #audition-seek {
+  flex: 1;
+  accent-color: var(--coral);
+}
+.audition-time {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
