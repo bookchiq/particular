@@ -113,6 +113,55 @@ def test_rejects_malformed_locked_measures(demo_server: tuple[str, int]) -> None
     assert "diagnostic_id" in payload
 
 
+def test_reports_pdf_export_fallback_without_musescore(
+    demo_server: tuple[str, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No MuseScore on PATH → the response advertises the explicit fallback.
+    monkeypatch.setenv("PARTICULAR_MUSESCORE", "/no/such/musescore")
+    status, payload = _post(demo_server, FIXTURE.read_bytes())
+
+    assert status == 200
+    assert payload["pdf"]["available"] is False
+    assert payload["pdf"]["exports"] == {}
+    assert "MuseScore" in payload["pdf"]["note"]
+
+
+def test_advertises_pdf_exports_when_musescore_is_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A stub MuseScore that emits a PDF lets the full export path run without the
+    # real tool; the server should list per-source PDF downloads that resolve.
+    stub = tmp_path / "mscore"
+    stub.write_text(
+        '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\nprintf "%%PDF-1.4 stub" > "$2"\n'
+    )
+    stub.chmod(0o755)
+    monkeypatch.setenv("PARTICULAR_MUSESCORE", str(stub))
+
+    server = create_server(port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    address = cast(tuple[str, int], server.server_address)
+    try:
+        status, payload = _post((str(address[0]), int(address[1])), FIXTURE.read_bytes())
+        assert status == 200
+        assert payload["pdf"]["available"] is True
+        assert set(payload["pdf"]["exports"]) == {"Original", "Foundation", "Core", "Challenge"}
+
+        connection = http.client.HTTPConnection(str(address[0]), int(address[1]))
+        connection.request("GET", cast(str, payload["pdf"]["exports"]["Foundation"]))
+        response = connection.getresponse()
+        body = response.read()
+        connection.close()
+        assert response.status == 200
+        assert response.getheader("Content-Type") == "application/pdf"
+        assert body.startswith(b"%PDF")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
 def test_serves_playback_timelines_for_original_and_tiers(demo_server: tuple[str, int]) -> None:
     status, payload = _post(demo_server, FIXTURE.read_bytes())
     assert status == 200

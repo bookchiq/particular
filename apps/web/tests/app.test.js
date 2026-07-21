@@ -78,6 +78,11 @@ function successPayload(overrides = {}) {
       Core: "/artifacts/JOB123/core.playback.json",
       Challenge: "/artifacts/JOB123/challenge.playback.json",
     },
+    pdf: {
+      available: false,
+      note: "PDF export needs MuseScore on the server. Use the MusicXML downloads or the engraved preview instead.",
+      exports: {},
+    },
     part_exports: {
       Foundation: [
         {
@@ -837,6 +842,60 @@ describe("director review UI", () => {
         "Web Audio",
       ),
     );
+  });
+
+  it("shows the PDF fallback note when MuseScore is unavailable", async () => {
+    installFetch([jsonResponse(true, successPayload())]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    expect(document.querySelector("#pdf-note").textContent).toContain(
+      "MuseScore",
+    );
+    expect(document.querySelector("#pdf-downloads").hidden).toBe(true);
+  });
+
+  it("lists PDF downloads when the server can render them", async () => {
+    installFetch([
+      jsonResponse(
+        true,
+        successPayload({
+          payload: {
+            pdf: {
+              available: true,
+              note: "Generated PDFs require director review before rehearsal.",
+              exports: {
+                Original: "/artifacts/JOB123/original.pdf",
+                Foundation: "/artifacts/JOB123/foundation.pdf",
+                Core: "/artifacts/JOB123/core.pdf",
+                Challenge: "/artifacts/JOB123/challenge.pdf",
+              },
+            },
+          },
+        }),
+      ),
+    ]);
+    await loadApp();
+    selectFileAndBasis();
+    submit();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#results").hidden).toBe(false),
+    );
+
+    expect(document.querySelector("#pdf-note").textContent).toContain(
+      "director review",
+    );
+    const pdfDownloads = document.querySelector("#pdf-downloads");
+    expect(pdfDownloads.hidden).toBe(false);
+    const hrefs = [...pdfDownloads.querySelectorAll("a")].map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(hrefs).toContain("/artifacts/JOB123/foundation.pdf");
+    expect(hrefs).toHaveLength(4);
   });
 
   it("ignores a stale earlier response so only the latest render wins", async () => {

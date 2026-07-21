@@ -529,6 +529,14 @@ input:focus-visible {
   text-decoration: none;
   font-weight: bold;
 }
+.pdf-note {
+  margin: 1.2rem 0 0.6rem;
+  font-size: 0.8rem;
+  color: var(--ink);
+}
+#pdf-downloads {
+  margin-bottom: 0.6rem;
+}
 .delete-job {
   width: auto;
   margin-top: 1.2rem;
