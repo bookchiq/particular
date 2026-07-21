@@ -446,3 +446,65 @@ def simplify_accidentals(
             True,
         )
     return _rejected(operator, events[:1], blocked_reason or "no accidental to simplify")
+
+
+def even_rhythm(
+    events: tuple[Event, ...],
+    protected: frozenset[SourceLocator],
+    divisions: int,
+) -> Candidate:
+    """Even an uneven (dotted) pair into two equal notes, lengthening the shorter.
+
+    Dotted and other uneven rhythms are harder to read and count than even ones.
+    ``reduce_rhythm`` only merges repeated pitches and ``thin_run`` only thins
+    equal-duration runs, so neither eases a dotted-eighth-plus-sixteenth figure.
+    This rewrites a contiguous pair of unequal durations as two notes of equal
+    length (each half of the pair's total), keeping both pitches and the pair's
+    total span — so the shortest note gets longer and the subdivision eases while
+    onset coverage and note count are unchanged.
+
+    Only genuinely busy figures (whose shorter note is an eighth or faster) are
+    evened, and protected or tied notes are left alone.
+    """
+
+    operator = "rhythm-even"
+    blocked_reason: str | None = None
+    for left, right in zip(events, events[1:], strict=False):
+        if left.kind != "note" or right.kind != "note" or left.voice != right.voice:
+            continue
+        if left.written_pitch is None or right.written_pitch is None:
+            continue
+        if left.onset + left.duration != right.onset or left.duration == right.duration:
+            continue
+        total = left.duration + right.duration
+        if total % 2 != 0:
+            continue
+        half = total // 2
+        note_type = NOTE_TYPES.get(Fraction(half, divisions))
+        if note_type is None:
+            continue
+        if Fraction(min(left.duration, right.duration), divisions) > Fraction(1, 2):
+            continue
+        if any(event.tie_start or event.tie_stop for event in (left, right)):
+            blocked_reason = blocked_reason or "tied notes cannot be evened safely"
+            continue
+        if left.locator in protected or right.locator in protected:
+            blocked_reason = blocked_reason or "protected role prevents evening"
+            continue
+        pair = (left, right)
+        evened_left = replace(left, duration=half, note_type=note_type)
+        evened_right = replace(right, onset=left.onset + half, duration=half, note_type=note_type)
+        return Candidate(
+            candidate_id(operator, pair),
+            operator,
+            1,
+            ("Essential", "Supported"),
+            (left.locator, right.locator),
+            pair,
+            (evened_left, evened_right),
+            {"rhythmic_complexity": -1.0},
+            "An uneven pair was evened into two equal notes",
+            ("pitches and total duration retained",),
+            True,
+        )
+    return _rejected(operator, events[:1], blocked_reason or "no uneven pair to even out")

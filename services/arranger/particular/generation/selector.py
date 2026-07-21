@@ -12,6 +12,7 @@ from particular.generation.candidates import Candidate
 from particular.generation.operators import (
     adjust_octave_range,
     desyncopate,
+    even_rhythm,
     fold_large_leaps,
     reduce_rhythm,
     simplify_accidentals,
@@ -178,6 +179,7 @@ def generate_arrangement_family(
                 fold_large_leaps(measure.events, minimum, maximum, protected),
                 desyncopate(measure.events, protected, measure.divisions),
                 simplify_accidentals(measure.events, measure.key_fifths, protected),
+                even_rhythm(measure.events, protected, measure.divisions),
             )
             vector = analyze_part(replace(part, measures=(measure,)), profile_override).vector
             proposed.extend(

@@ -11,6 +11,7 @@ from particular.exporters.musicxml import export_musicxml, semantic_fingerprint
 from particular.generation.operators import (
     adjust_octave_range,
     desyncopate,
+    even_rhythm,
     fold_large_leaps,
     reduce_rhythm,
     simplify_accidentals,
@@ -161,6 +162,29 @@ def _accidental_score() -> Score:
         <note><pitch><step>G</step><alter>1</alter><octave>4</octave></pitch><duration>4</duration>
         <type>quarter</type></note>
         <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        </measure></part></score-partwise>"""
+    )
+
+
+def _dotted_score() -> Score:
+    """A dotted-eighth + sixteenth (uneven) pair inside an inner line, after a
+    plain quarter so the pair is not the protected opening entrance."""
+
+    return parse_musicxml(
+        b"""<score-partwise><part-list><score-part id="P1"><part-name>Viola</part-name>
+        </score-part></part-list><part id="P1"><measure number="1"><attributes>
+        <divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
+        </attributes>
+        <note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        <note><pitch><step>C</step><octave>4</octave></pitch><duration>3</duration>
+        <type>eighth</type><dot/></note>
+        <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration>
+        <type>16th</type></note>
+        <note><pitch><step>F</step><octave>4</octave></pitch><duration>4</duration>
+        <type>quarter</type></note>
+        <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration>
         <type>quarter</type></note>
         </measure></part></score-partwise>"""
     )
@@ -591,6 +615,64 @@ def test_simplify_accidentals_eases_chromatic_measures_in_easier_tiers() -> None
         )
 
     assert accidentals(family.tiers[0].score) < accidentals(family.tiers[2].score)
+    validate_family(source, family)
+
+
+def test_even_rhythm_splits_an_uneven_pair_and_respects_guards() -> None:
+    events = _dotted_score().parts[0].measures[0].events  # E4, C4(3), D4(1), F4, G4
+
+    candidate = even_rhythm(events, frozenset(), divisions=4)
+    assert candidate.accepted is True
+    assert candidate.operator == "rhythm-even"
+    assert candidate.locators == (events[1].locator, events[2].locator)  # the dotted pair
+    left, right = candidate.after
+    assert left.duration == right.duration == 2  # two eighths (each half of the quarter)
+    assert left.written_pitch == events[1].written_pitch  # C4 pitch kept
+    assert right.written_pitch == events[2].written_pitch  # D4 pitch kept
+    assert left.onset == events[1].onset
+    assert right.onset == events[1].onset + 2  # the second note moves to the midpoint
+    assert left.duration + right.duration == events[1].duration + events[2].duration
+    assert candidate.difficulty_delta == {"rhythmic_complexity": -1.0}
+
+    # An even pair (two quarters) has nothing to even out.
+    even = even_rhythm((events[3], events[4]), frozenset(), divisions=4)
+    assert even.accepted is False
+    assert even.rejection_reason == "no uneven pair to even out"
+
+    protected = even_rhythm(events, frozenset({events[1].locator}), divisions=4)
+    assert protected.accepted is False
+    assert protected.rejection_reason == "protected role prevents evening"
+
+    tied = (replace(events[1], tie_start=True), events[2])
+    tied_result = even_rhythm(tied, frozenset(), divisions=4)
+    assert tied_result.accepted is False
+    assert tied_result.rejection_reason == "tied notes cannot be evened safely"
+
+
+def test_even_rhythm_eases_dotted_figures_without_changing_note_count() -> None:
+    source = _dotted_score()
+
+    family = generate_arrangement_family(source)
+
+    accepted = {
+        (change.tier, change.operator)
+        for change in family.manifest.changes
+        if change.status == "accepted"
+    }
+    assert ("Essential", "rhythm-even") in accepted
+    assert ("Original", "rhythm-even") not in accepted
+
+    counts = [
+        sum(
+            event.kind == "note" and event.written_pitch is not None
+            for part in tier.score.parts
+            for measure in part.measures
+            for event in measure.events
+        )
+        for tier in family.tiers
+    ]
+    # Evening changes durations, never note count.
+    assert len(set(counts)) == 1
     validate_family(source, family)
 
 
