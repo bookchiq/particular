@@ -19,6 +19,7 @@ from particular.generation.operators import (
 from particular.generation.selector import (
     ArrangementFamily,
     GenerationManifest,
+    ManifestChange,
     TierScore,
     compose_mixed_tier,
     generate_arrangement_family,
@@ -479,6 +480,34 @@ def test_desyncopate_realigns_syncopation_without_adding_attacks() -> None:
     assert tie_starts(family.tiers[0].score) > tie_starts(family.tiers[2].score)
     assert len({attacks(tier.score) for tier in family.tiers}) == 1
     validate_family(source, family)
+
+
+def test_brandenburg_excerpt_shows_visible_reductions_and_round_trips() -> None:
+    source = parse_musicxml(
+        (ROOT / "evaluation/fixtures/brandenburg-no3-mvt3-excerpt.musicxml").read_bytes()
+    )
+    # The curated excerpt is normalized to canonical, export-capable content.
+    assert source.export_capable
+
+    family = generate_arrangement_family(source)
+    validate_family(source, family)
+
+    def accepted(tier: str) -> list[ManifestChange]:
+        return [
+            change
+            for change in family.manifest.changes
+            if change.tier == tier and change.status == "accepted"
+        ]
+
+    # Real repertoire exercises the reductive operators the trivial fixtures cannot:
+    # the easiest tier reduces most, the top tier is left as written.
+    assert len(accepted("Foundation")) > len(accepted("Core")) > len(accepted("Challenge")) == 0
+    assert any(change.operator == "run-thin" for change in accepted("Foundation"))
+
+    # Every tier round-trips through MusicXML export unchanged.
+    for tier in family.tiers:
+        reparsed = parse_musicxml(export_musicxml(tier.score))
+        assert semantic_fingerprint(reparsed) == semantic_fingerprint(tier.score)
 
 
 def test_family_is_deterministic_synchronized_and_round_trippable() -> None:
