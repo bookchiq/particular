@@ -122,6 +122,27 @@
             Regenerate
           </button>
         </section>
+        <section
+          class="panel notation-panel"
+          id="notation-panel"
+          aria-labelledby="notation-title"
+        >
+          <h3 id="notation-title">Engraved preview</h3>
+          <p class="notation-hint">
+            See the selected tier as sheet music. Engraving loads a notation
+            library from a CDN and runs in your browser—your score is never
+            uploaded.
+          </p>
+          <button id="engrave" type="button" class="engrave">
+            Engrave this tier
+          </button>
+          <p
+            id="notation-status"
+            class="notation-status"
+            aria-live="polite"
+          ></p>
+          <div id="notation" class="notation"></div>
+        </section>
         <div class="result-grid">
           <section class="panel" aria-labelledby="difficulty-title">
             <h3 id="difficulty-title">Part difficulty</h3>

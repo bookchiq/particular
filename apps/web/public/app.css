@@ -290,6 +290,35 @@ input:focus-visible {
   padding: 0.2rem 0.4rem;
   font: inherit;
 }
+.notation-panel {
+  margin-top: 1.5rem;
+}
+.notation-hint {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.engrave {
+  width: auto;
+  padding: 0.6rem 1.1rem;
+  box-shadow: 3px 3px 0 var(--line);
+}
+.notation-status {
+  min-height: 1.2rem;
+  margin: 0.8rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.notation {
+  margin-top: 1rem;
+  overflow-x: auto;
+}
+.notation:not(:empty) {
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid #ccd3ce;
+}
 .mixed-tier-panel {
   margin-top: 1.5rem;
 }
