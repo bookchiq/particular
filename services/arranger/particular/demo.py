@@ -374,8 +374,9 @@ class DemoHandler(BaseHTTPRequestHandler):
                 "Generated PDFs require director review before rehearsal."
                 if pdf_available
                 else (
-                    "PDF export needs MuseScore on the server. "
-                    "Use the MusicXML downloads or the engraved preview instead."
+                    "PDF export needs MuseScore installed on the computer running "
+                    "Particular. Until then, use the MusicXML downloads or the "
+                    "engraved preview."
                 )
             ),
             "exports": (

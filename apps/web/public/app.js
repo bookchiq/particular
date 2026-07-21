@@ -235,13 +235,13 @@ function renderPdf() {
 }
 
 const labels = {
-  pitch_range_semitones: "Range · semitones",
-  largest_leap_semitones: "Largest leap",
-  max_note_density_per_quarter: "Notes / quarter",
-  shortest_duration_quarters: "Shortest value",
-  accidental_burden: "Accidental burden",
-  syncopation: "Syncopation",
-  rhythmic_complexity: "Rhythm complexity",
+  pitch_range_semitones: "Range (semitones)",
+  largest_leap_semitones: "Largest leap (semitones)",
+  max_note_density_per_quarter: "Notes per beat",
+  shortest_duration_quarters: "Fastest note (beats)",
+  accidental_burden: "Accidentals",
+  syncopation: "Syncopation (0–1)",
+  rhythmic_complexity: "Rhythm complexity (0–1)",
 };
 
 async function showLimits() {
@@ -696,8 +696,30 @@ function renderRoleEffects(roleEffects) {
     .join("")}</ul>`;
 }
 
+// Plain-language names for the engine's internal operators, so a director reads
+// what happened musically rather than an operator id.
+const OPERATOR_LABELS = {
+  "octave-range": "kept in range",
+  "repetition-thin": "thinned a repeat",
+  "rhythm-merge": "merged rhythms",
+  "run-thin": "thinned a fast run",
+  "leap-fold": "eased a wide leap",
+  desyncopate: "aligned to the beat",
+};
+
+function operatorLabel(operator) {
+  return OPERATOR_LABELS[operator] || operator;
+}
+
+function partName(partId) {
+  const part = (payload.analysis?.parts || []).find(
+    (p) => p.part_id === partId,
+  );
+  return part ? part.part_name : partId;
+}
+
 function changeArticle(change) {
-  return `<article class="change"><span class="badge ${change.status}">${change.status === "accepted" ? "Accepted change" : "Not applied"}</span><p><strong>${escapeHtml(change.part_id)}, measure ${escapeHtml(change.measure)}</strong> · ${escapeHtml(change.operator)} v${escapeHtml(change.operator_version)}</p><p>${escapeHtml(change.explanation)}</p>${renderDeltas(change.difficulty_delta)}${renderRoleEffects(change.role_effects)}${change.rejection_reason ? `<small>Reason: ${escapeHtml(change.rejection_reason)}</small>` : ""}</article>`;
+  return `<article class="change"><span class="badge ${change.status}">${change.status === "accepted" ? "Accepted change" : "Not applied"}</span><p><strong>${escapeHtml(partName(change.part_id))}, measure ${escapeHtml(change.measure)}</strong> · ${escapeHtml(operatorLabel(change.operator))}</p><p>${escapeHtml(change.explanation)}</p>${renderDeltas(change.difficulty_delta)}${renderRoleEffects(change.role_effects)}${change.rejection_reason ? `<small>Reason: ${escapeHtml(change.rejection_reason)}</small>` : ""}</article>`;
 }
 
 function renderNoops(noops) {

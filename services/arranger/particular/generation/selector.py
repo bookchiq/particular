@@ -228,9 +228,7 @@ def generate_arrangement_family(
                 reason = (
                     "Original retains source detail for this operator"
                     if tier not in candidate.tiers
-                    else (
-                        f"passage pressure {item.pressure:.2f} does not exceed target {target:.2f}"
-                    )
+                    else (f"Left as written — already within reach for the {tier} tier.")
                 )
             changes.append(
                 ManifestChange(

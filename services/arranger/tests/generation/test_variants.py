@@ -709,7 +709,7 @@ def test_tier_policy_explains_unchanged_below_target_passage() -> None:
         if change.tier == "Essential" and change.operator == "repetition-thin"
     )
     assert foundation_repetition.rejection_reason == (
-        "passage pressure 0.12 does not exceed target 0.35"
+        "Left as written — already within reach for the Essential tier."
     )
 
 

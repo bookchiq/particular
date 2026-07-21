@@ -632,3 +632,10 @@ button.sample span {
   font-size: 0.82rem;
   color: var(--muted);
 }
+
+/* Small explanatory notes under panel headings. */
+.panel-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
